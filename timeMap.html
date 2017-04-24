@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="utf-8" />
+	<title>日历形式显示</title>
+	<link href="css/dateSlider.css" type="text/css" rel="stylesheet" />
+	<script language="javascript" src="js/jquery.js"></script>
+	<script language="javascript" src="js/jquery.ui.js"></script>
+	<script language="javascript" src="js/DateSlider.js"></script>
+	<script src="js/timeseries.js"></script>
+	<!--	<script src="js/CalenderMap.js"></script>-->
+	<script src="js/DataTools.js"></script>
+	<link href="css/timeseriesStyle.css" type="text/css" rel="stylesheet" />
+	<style>
+		body {
+			font: 10px sans-serif;
+			shape-rendering: crispEdges;
+		}
+		
+		svg {
+			stroke-width: 0;
+			stroke: blue;
+		}
+		
+		.minute {
+			fill: #fff;
+			stroke: #fff;
+			/*stroke-width: 1px;*/
+			opacity: 0.5;
+			/*			filter:alpha(opacity=100);*/
+		}
+		
+		.mw {
+			padding: inherit;
+			margin-bottom: 0px;
+			margin-top: 0px;
+			stroke-width: 0;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="main">
+		<div id="filter" style="width:970px; height:40px;margin:10px 20px">
+			<p>设置
+				<br/> 像素块长度：
+				<input type="text" name="pixleSize" id="pixleSize" value="5" style="width:30px" /> &nbsp;&nbsp;&nbsp; 像素块宽度：
+				<input type="text" name="pixleHeight" id="pixleHeight" value="5" style="width:30px" /> &nbsp;&nbsp;&nbsp; 像素块边缘大小：
+				<input type='text' name="strokeSize" id="strokeSize" value="1" style="width:30px" /> &nbsp;&nbsp;&nbsp;
+				<!--				<input type='range' name="strokeSize" id="strokeSize" value="1" style="width:30px" /> &nbsp;&nbsp;&nbsp;-->
+				<select id="selectMap" class="selectMap" onchange="draw()">
+					<option value="MWValue" selected="selected">发电功率</option>
+					<option value="SETMW">负荷指令</option>
+					<option value="MSP">主蒸汽压力</option>
+					<option value="MSPS">主蒸汽压力设定值</option>
+					<option value="THRTEMP">主蒸汽温度</option>
+				</select>
+				<!--			<p>加载文件
+				<input type="file" name="file" id="file" hidden="hidden"  /> </p>-->
+				<input type="button" id="submit" name="submit" onclick="draw()" value="确定" /> </p>
+		</div>
+		<hr/>
+		<div class="dateSlider" id="dateSlider" style="width:900px;margin:40px 20px"> </div>
+		<div id="calendar" style="width:900px;margin:20px 20px"></div>
+		<div id="timeseries-one" style="width:600px;height:200px;margin:20px 20px"></div>	<div id="timeseries-two" style="width:600px;height:200px;margin:20px 20px"></div>
+	</div>
+	<footer></footer>
+	<script src="D3/d3.v3.min.js"></script>
+	<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+	<script src="D3/d3.v4.min.js"></script>
+	<script>
+		//定义全局变量
+		var drawflag = 0
+			, firstIndex, secondIndex, selectMap = 'MWValue';
+		var cellSize = 5
+			, cellheight = 5
+			, strokeSize = 1;
+		var dir = "E:/eclipse/workspace/DCS/WebContent/data";
+		var fileName = "data/mpt20160305new.csv";
+		//转换日期格式
+		var format = d3.timeParse("%Y-%m-%d");
+		parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
+		var Months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+		var Hours = ["1点", "2点", "3点", "4点", "5点", "6点", "7点", "8点", "9点", "10点", "11点", "12点", "13点", "14点", "15点", "16点", "17点", "18点", "19点", "20点", "21点", "22点", "23点", "24点"];
+		var firstDate, endDate, selectS, selectE;
+		//颜色插值函数
+		var a = d3.rgb(0, 255, 0); //绿色
+		var b = d3.rgb(255, 0, 0); //红色
+		var c = d3.rgb(255, 97, 0); //橙色
+		var compute = d3.interpolateHsl(a, b);
+		//var compute = d3.interpolateHsl(b, c);
+		var color = d3.scaleLinear().range([0, 1]);
+		//数据存储单元
+		var csv_nest, csv_data, num;
+
+		function draw() {
+			//加载像素热力图
+			document.getElementById("calendar").innerHTML = "";
+			cellSize = document.getElementById("pixleSize").value; // cell size
+			cellheight = $("#pixleHeight").val();
+			strokeSize = $("#strokeSize").val();
+			var obj = document.getElementById("selectMap");
+			selectMap  =  obj.options[obj.options.selectedIndex].value;  //这是取值 
+			var width = 299 * cellSize
+				, height = 600;
+			var svg = d3.select("div#calendar");
+			var layer = 1;
+			var flag = new Array();
+			for (var j in csv_nest) {
+				var m = false;
+				for (var i in csv_nest[j].values) {
+					var keyDate = csv_nest[j].values[i].keyDate;
+					var sDate = selectS.getFullYear() + "-" + ((selectS.getMonth() + 1) < 10 ? "0" : "") + (selectS.getMonth() + 1) + "-" + (selectS.getDate() < 10 ? "0" : "") + selectS.getDate();
+					var eDate = selectE.getFullYear() + "-" + ((selectE.getMonth() + 1) < 10 ? "0" : "") + (selectE.getMonth() + 1) + "-" + (selectE.getDate() < 10 ? "0" : "") + selectE.getDate();
+					if (keyDate < sDate) break;
+					else if (keyDate > eDate) break;
+					else {
+						m = true;
+					}
+				}
+				if (m) layer++;
+				flag.push(m);
+			}
+			color.domain(d3.extent(csv_data, function (d) {
+				return d[selectMap];
+			}));
+			var rectSVG = svg.append("svg").attr("width", width).attr("height", layer * cellheight).attr("class", "MW");
+			//			var rectSVG = svg.append("svg").attr("width", width).attr("class", "MW");
+			var rectG = rectSVG.append('g').attr('class', 'rect -g').attr("transform", "translate(5,0)");
+			color.domain(d3.extent(csv_data, function (d) {
+				return d[selectMap];
+			}));
+			var h = 0;
+			for (var j in flag) {
+				if (flag[j]) {
+					drawRect(csv_nest[j].values, h++, rectG);
+				}
+			}
+			var aN = new Array();
+			for (var i in num) {
+				aN.push(num[i][selectMap])
+			}
+			return "平均值：" + d3.mean(aN).toFixed(2) + "  最大值：" + d3.max(aN) + "  最小值：" + d3.min(aN);
+		}
+		//确定像素块Y坐标位置
+		function getY(d) {
+			return d * cellheight;
+		}
+		//获取所属组的时间点y-m-s
+		function readDate(d) {
+			return d.keyDate;
+		}
+		//绘制小方块像素点
+		function drawRect(data, c, rectG) {
+			var flag = false;
+			for (var i in data) {
+				if (data[i].date >= selectS && data[i].date <= selectE) {
+					num.push(data[i]);
+					flag = true;
+				}
+			}
+			if (flag) {
+				var ty = cellSize - 2;
+				var rect = rectG.append('g').selectAll(".minute").data(num).enter().append("rect").attr('id', function (d) {
+						return 'rect-' + d.index
+					}).attr("class", "minute").attr("width", cellSize).attr("height", cellheight).attr("x", function (d) {
+						return (d.date.getHours() * 12 + d.date.getMinutes() / 5) * cellSize;
+					}).attr("y", getY(c)).style("fill", function (d) {
+						return compute(color(d[selectMap]));
+					}).style("stroke-width", strokeSize)
+					//.on("mouseover",mouseover)
+					.on("mousedown", mouseDown);
+				rect.append("title").text(function (d) {
+					return d.keyDate + " " + d.date.getHours() + ":" + d.date.getMinutes() + "  发电功率为:" + d[selectMap];
+				});
+			}
+		}
+
+		function mouseDown(d) {
+			if (drawflag == 0) {
+				firstIndex = d.index;
+				a[0] = d.date;
+			}
+			drawflag++;
+			if (drawflag == 2) {
+				d3.selectAll('rect').style("opacity", 0.5);
+				if (d.index <= firstIndex) {
+					alert("选取时间点小于前一个,请重新选择");
+					drawflag = 1;
+				}
+				else {
+					secondIndex = d.index;
+					//选中的rect改变透明度
+					var rect = d3.selectAll(rect);
+					for (var i = firstIndex; i <= secondIndex; i++) {
+						$("#rect-" + i).css("opacity", 1.0);
+						//$("#rect-" + i).css("stroke",'blue');
+						//console.log(rect[i].id);
+					}
+					a[1] = d.date;
+					var j = d.index;
+					//					drawTime(csv_data);
+					timeseries('timeseries-one', csv_data, firstIndex, secondIndex, true,false);
+					drawflag = 0;
+				}
+			}
+		}
+
+		function createDemos(f, s) {
+			//日期控件
+			var date = $("<div id='date' />").appendTo($("#dateSlider")); //渲染日期组件
+			var dateTxt = $("<lable id='dateTxt' style='position:relative;top:30px;'/>&nbsp;&nbsp;&nbsp;").appendTo($("#dateSlider")); //渲染确定日期显示组件
+			var dataTxt = $("<lable id='dataTxt' style='position:relative;top:30px;left:10px'/>").appendTo($("#dateSlider")); //渲染确定日期显示组件
+			var dateSilderObj = date.dateRangeSlider({
+				arrows: false, //是否显示左右箭头
+				bounds: {
+					min: new Date(f)
+					, max: new Date(s)
+				}, //最大 最少日期
+				defaultValues: {
+					min: new Date(f)
+					, max: new Date(s)
+				} //默认选中区域
+				
+				, scales: [{
+					first: function (value) {
+						return value;
+					}
+					, end: function (value) {
+						return value;
+					}
+					, next: function (val) {
+						var next = new Date(val);
+						return new Date(next.setMonth(next.getMonth() + 1));
+					}
+					, label: function (val) {
+						return Months[val.getMonth()];
+					}
+					, format: function (tickContainer, tickStart, tickEnd) {
+						tickContainer.addClass("myCustomClass");
+					}
+				}]
+			});
+			//重新赋值（整个时间轴）
+			dateSilderObj.dateRangeSlider("bounds", new Date(f), new Date(s));
+			//重新赋值（选中区域）
+			dateSilderObj.dateRangeSlider("values", new Date(f), new Date(s));
+			//拖动完毕后的事件
+			dateSilderObj.bind("valuesChanged", function (e, data) {
+				var val = data.values;
+				selectS = val.min;
+				selectE = val.max;
+				var stime = val.min.getFullYear() + "-" + (val.min.getMonth() + 1) + "-" + val.min.getDate() + " " + val.min.getHours() + ":" + val.min.getMinutes() + ":" + val.min.getSeconds();
+				var etime = val.max.getFullYear() + "-" + (val.max.getMonth() + 1) + "-" + val.max.getDate() + " " + val.max.getHours() + ":" + val.max.getMinutes() + ":" + val.max.getSeconds();
+				num = new Array();
+				dataTxt.text(draw());
+				dateTxt.text("起止时间：" + stime + " 至 " + stime);
+			});
+		}
+		$(function () {
+			d3.csv(fileName, type, function (error, csv) {
+				if (error) throw error;
+				csv_data = csv;
+			 [firstDate, endDate] = d3.extent(csv, function (d, i) {
+					return d.date;
+				});
+				csv_nest = d3.nest().key(function (d) {
+					return d.keyDate;
+				}).entries(csv);
+				createDemos(firstDate, endDate);
+			})
+		});
+
+		function type(d, i) {
+			d.date = parseDate(d.date);
+			d.keyDate = d.date.getFullYear() + "-" + ((d.date.getMonth() + 1) < 10 ? "0" : "") + (d.date.getMonth() + 1) + "-" + (d.date.getDate() < 10 ? "0" : "") + d.date.getDate();
+			d.index = ++i;
+			d.MWValue = parseInt(+d.MWValue); //发电功率
+			d.SETMW = parseInt(+d.SELMWValue); //负荷功率
+			d.MSP = parseInt(+d.MSP); //主蒸汽压力
+			d.MSPS = parseInt(+d.MSPS); //主蒸汽压力设定值
+			d.THRTEMP = parseInt(+d.THRTEMP); //主蒸汽温度
+			return d;
+		}
+	</script>
+</body>
+
+</html>
