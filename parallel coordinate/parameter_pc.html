@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<head>
+    <title>摆角数据平行坐标展示</title>
+</head>
+<style>
+    svg {
+        font: 10px sans-serif;
+    }
+    
+    .background path {
+        fill: none;
+        stroke: #ccc;
+        stroke-opacity: .4;
+        shape-rendering: crispEdges;
+    }
+    
+    .foreground path {
+        fill: none;
+        stroke: steelblue;
+        stroke-opacity: .7;
+    }
+    
+    .brush .extent {
+        fill-opacity: .3;
+        stroke: #fff;
+        shape-rendering: crispEdges;
+    }
+    
+    .axis line,
+    .axis path {
+        fill: none;
+        stroke: #000;
+        shape-rendering: crispEdges;
+    }
+    
+    .axis text {
+        text-shadow: 0 1px 0 #fff;
+        cursor: move;
+    }
+</style>
+<h1 align="center">摆角数据平行坐标展示</h1>
+<b>数据选择：</b>
+<select id="dataMap" class="dataMap" onchange="draw()">
+		<option value="0" selected="selected">1min间隔</option>
+        <option value="1">10min间隔</option>
+</select>
+<b>参数选择：</b>
+<select id="selectMap" class="selectMap" onchange="draw()">
+		  <option value="000" selected="selected">摆角AB-CD-EF</option>
+          <option value="001">AB-CD-EF燃烧器摆角1</option>
+          <option value="002">AB燃烧器摆角1234</option>
+		  <option value="003">CD燃烧器摆角1234</option>
+		  <option value="004">EF燃烧器摆角1234</option>
+          <option value="111">AGP上、下燃烧器摆角1234</option>
+          <option value="112">AGP下燃烧器摆角1234</option>
+          <option value="113">AGP上燃烧器摆角1234</option>
+          <option value="221">一、二次再热器烟气挡板12</option>
+          <option value="331">过热器一级气动减温喷水阀1234</option>
+          <option value="332">过热器二级气动减温喷水阀1234</option>
+				</select>
+
+<b>采样间隔：</b>
+<font id="interval"></font>
+<b>时长：</b>
+<font id="timespan"></font>
+<b>数据量：</b>
+<font id="count"></font>
+<b>当前文件：</b>
+<font id="pathname"></font>
+</br>
+
+<b text-align="center">时间跨度</b>
+<font id="startend" text-align="center"></font>
+
+<body>
+    <script src="../d3.v3/d3.min.js"></script>
+    <script>
+        var m = [30, 10, 10, 10],
+            w = 1300 - m[1] - m[3],
+            h = 500 - m[0] - m[2],
+            w_ts=2000 - m[1] - m[3],
+            h_ts=500 - m[0] - m[2];
+
+        var x = d3.scale.ordinal().rangePoints([0, w], 1),
+            y = {},
+            dragging = {};
+
+        var line = d3.svg.line(),
+            axis = d3.svg.axis().orient("left"),
+            background,
+            foreground;
+
+        var svg = d3.select("body").append("svg")
+            .attr("width", w + m[1] + m[3])
+            .attr("height", h + m[0] + m[2])
+            .append("g")
+            .attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+        var svg_ts = d3.select("body").append("svg")
+            .attr("width", w + m[1] + m[3])
+            .attr("height", h + m[0] + m[2])
+            .append("g")
+            .attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+
+        var obj = document.getElementById("selectMap"),
+            selectMap = obj.options[obj.options.selectedIndex].value;  //这是取值
+        var count = 0;
+        var file_10min = ["angleABCDEF_march_10min.csv", "AGP_march_10min.csv", "smoke_march_10min.csv", "water_march_10min.csv"];
+        var file_1min = ["angleABCDEF_march_1min.csv", "AGP_march_1min.csv", "smoke_march_1min.csv", "water_march_1min.csv"];
+        var file_index = 0;
+        var pathname = file_1min[file_index];
+
+
+        //绘制函数
+        function draw() {
+            var obj = document.getElementById("selectMap"),
+                selectMap = obj.options[obj.options.selectedIndex].value;  //这是取值 
+            var obj = document.getElementById("dataMap"),
+                dataMap = obj.options[obj.options.selectedIndex].value;
+            console.log(selectMap);
+            d3.selectAll(".dimension").remove();
+            d3.selectAll(".background").remove();
+            d3.selectAll(".foreground").remove();
+            y = {};
+            count = 0;
+            if (selectMap.indexOf("00") >= 0) {
+                file_index = 0;
+            } else if (selectMap.indexOf("11") >= 0) {
+                file_index = 1;
+            } else if (selectMap.indexOf("22") >= 0) {
+                file_index = 2;
+            } else if (selectMap.indexOf("33") >= 0) {
+                file_index = 3;
+            }
+            console.log("file_index: " + file_index)
+            if (dataMap == "0") { pathname = file_1min[file_index]; }
+            else { pathname = file_10min[file_index]; }
+            function setXdomain(selectMap, data) {
+                x.domain(dimensions = d3.keys(data[0]).filter(function (d) {
+                    if (d == "date") {
+                        y[d] = d3.time.scale()
+                            .domain(d3.extent(data, function (p) { return p[d]; }))
+                            .range([h, 0]);
+                    } else {
+                        switch (selectMap) {
+                            case "000":
+                                if (d != 'num') {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "001":
+                                if (d == "HHA11AS001XQ01" || d == "HHA31AS001XQ01" || d == "HHA51AS001XQ01") {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "002":
+                                if (d == "HHA11AS001XQ01" || d == "HHA12AS001XQ01" || d == "HHA13AS001XQ01" || d == "HHA14AS001XQ01") {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "003":
+                                if (d == "HHA31AS001XQ01" || d == "HHA32AS001XQ01" || d == "HHA33AS001XQ01" || d == "HHA34AS001XQ01") {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "004":
+                                if (d == "HHA51AS001XQ01" || d == "HHA52AS001XQ01" || d == "HHA53AS001XQ01" || d == "HHA54AS001XQ01") {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "111":
+                                if ((d != "num") && (d == "HHA71AS001XQ01Value" || d == "HHA72AS001XQ01Value" || d == "HHA73AS001XQ01Value" || d == "HHA74AS001XQ01Value"
+                                    || d == "HHA81AS001XQ01Value" || d == "HHA82AS001XQ01Value" || d == "HHA83AS001XQ01Value" || "HHA84AS001XQ01Value")) {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "112":
+                                if ((d != "num") && (d == "HHA71AS001XQ01Value" || d == "HHA72AS001XQ01Value" || d == "HHA73AS001XQ01Value" || d == "HHA74AS001XQ01Value")) {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "113":
+                                if ((d != "num") && (d == "HHA71AS001XQ01Value" || d == "HHA72AS001XQ01Value" || d == "HHA73AS001XQ01Value" || d == "HHA74AS001XQ01Value")) {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "221":
+                                if ((d != "num") && (d == "HNA00AA001AXQ01Value" || d == "HNA00AA001BXQ01Value" || d == "HNA00AA002AXQ01Value" || d == "HNA00AA002BXQ01Value")) {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "331":
+                                if ((d != "num") && (d == "LAE21CG101XQ01Value" || d == "LAE22CG101XQ01Value" || d == "LAE23CG101XQ01Value" || d == "LAE24CG101XQ01Value")) {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                            case "332":
+                                if ((d != "num") && (d == "LAE11CG101XQ01Value" || d == "LAE12CG101XQ01Value" || d == "LAE13CG101XQ01Value" || d == "LAE14CG101XQ01Value")) {
+                                    y[d] = d3.scale.linear()
+                                        .domain(d3.extent(data, function (p) { return +p[d]; }))
+                                        .range([h, 0]);
+                                }
+                                break;
+                        }
+                    }
+                    return y[d];
+                    /*return d != "date" &&d!="Null"&& (y[d] = d3.scale.linear()
+                         .domain(d3.extent(data, function(p) { return +p[d]; }))
+                         .range([h, 0]));*/
+                }));
+            }
+            d3.csv("data/" + pathname, function (error, data) {
+                //var parseDate=d3.timeParse("%Y-%m-%d %H:%M:%S");  
+                var format = d3.time.format("%Y-%m-%d %H:%M:%S");
+                data.forEach(function (d) {
+                    d.date = format.parse(d.date);
+                    count += 1;
+                });
+                console.log("count=" + count);
+                interval = data[1].date - data[0].date;
+                timespan = data[count - 1].date - data[0].date;
+                document.getElementById("interval").innerHTML = convertTime(interval);
+                document.getElementById("timespan").innerHTML = convertTime(timespan);
+                document.getElementById("count").innerHTML = count + "条";
+                document.getElementById("pathname").innerHTML = pathname;
+                document.getElementById("startend").innerHTML = format(data[0].date) + " 至 " + format(data[count - 1].date);
+                // Extract the list of dimensions and create a scale for each.
+                setXdomain(selectMap, data);
+
+                // Add grey background lines for context.
+                background = svg.append("g")
+                    .attr("class", "background")
+                    .selectAll("path")
+                    .data(data)
+                    .enter().append("path")
+                    .attr("d", path);
+
+                // Add blue foreground lines for focus.
+                foreground = svg.append("g")
+                    .attr("class", "foreground")
+                    .selectAll("path")
+                    .data(data)
+                    .enter().append("path")
+                    .attr("d", path);
+
+                // Add a group element for each dimension.
+                var g = svg.selectAll(".dimension")
+                    .data(dimensions)
+                    .enter().append("g")
+                    .attr("class", "dimension")
+                    .attr("transform", function (d) { return "translate(" + x(d) + ")"; })
+                    .call(d3.behavior.drag()
+                        .on("dragstart", function (d) {
+                            dragging[d] = this.__origin__ = x(d);
+                            background.attr("visibility", "hidden");
+                        })
+                        .on("drag", function (d) {
+                            dragging[d] = Math.min(w, Math.max(0, this.__origin__ += d3.event.dx));
+                            foreground.attr("d", path);
+                            dimensions.sort(function (a, b) { return position(a) - position(b); });
+                            x.domain(dimensions);
+                            g.attr("transform", function (d) { return "translate(" + position(d) + ")"; })
+                        })
+                        .on("dragend", function (d) {
+                            delete this.__origin__;
+                            delete dragging[d];
+                            transition(d3.select(this)).attr("transform", "translate(" + x(d) + ")");
+                            transition(foreground)
+                                .attr("d", path);
+                            background
+                                .attr("d", path)
+                                .transition()
+                                .delay(500)
+                                .duration(0)
+                                .attr("visibility", null);
+                        }));
+
+                // Add an axis and title.
+                g.append("g")
+                    .attr("class", "axis")
+                    .each(function (d) { d3.select(this).call(axis.scale(y[d])); })
+                    .append("text")
+                    .attr("text-anchor", "middle")
+                    .attr("y", -9)
+                    .text(String);
+
+                // Add and store a brush for each axis.
+                g.append("g")
+                    .attr("class", "brush")
+                    .each(function (d) { d3.select(this).call(y[d].brush = d3.svg.brush().y(y[d]).on("brushstart", brushstart).on("brush", brush)); })
+                    .selectAll("rect")
+                    .attr("x", -8)
+                    .attr("width", 16);
+            });
+
+        }
+
+        function position(d) {
+            var v = dragging[d];
+            return v == null ? x(d) : v;
+        }
+
+        function transition(g) {
+            return g.transition().duration(500);
+        }
+
+        // Returns the path for a given data point.
+        function path(d) {
+            return line(dimensions.map(function (p) { return [position(p), y[p](d[p])]; }));
+        }
+
+        // When brushing, don’t trigger axis dragging.
+        function brushstart() {
+            d3.event.sourceEvent.stopPropagation();
+        }
+
+        // Handles a brush event, toggling the display of foreground lines.
+        function brush() {
+            var actives = dimensions.filter(function (p) { return !y[p].brush.empty(); }),
+                extents = actives.map(function (p) { return y[p].brush.extent(); });
+            foreground.style("display", function (d) {
+                return actives.every(function (p, i) {
+                    return extents[i][0] <= d[p] && d[p] <= extents[i][1];
+                }) ? null : "none";
+            });
+        }
+        //时间格式转换函数
+        function convertTime(timeLength) {
+            var timestring = "";
+            var timeunit = [{ "unit": 0, "string": "天" },
+            { "unit": 0, "string": "小时" },
+            { "unit": 0, "string": "分钟" },
+            { "unit": 0, "string": "秒" }];
+            //day=0,hour=0,minute=0,second=0;
+            timeLength = timeLength / 1000;
+            if (timeLength < 60) {
+                timeunit[3].unit = timeLength;
+                //timestring += timeLength + " 秒";
+            } else if (timeLength < 3600) {
+                timeunit[2].unit = (timeLength / 60).toFixed(0);
+                timeunit[3].unit = (timeLength % 60).toFixed(0);
+                //timestring += (timeLength / 60).toFixed(0) + " 分钟" + (timeLength % 60).toFixed(0) + "秒";
+            } else if (timeLength < 3600 * 24) {
+                timeunit[1].unit = (timeLength / 3600).toFixed(0);
+                timeunit[2].unit = ((timeLength % 3600) / 60).toFixed(0);
+                timeunit[3].unit = ((timeLength / 3600) % 60).toFixed(0);
+                //timestring += (timeLength / 3600).toFixed(0) + " 小时" + ((timeLength % 3600) / 60).toFixed(0) + "分钟" + ((timeLength / 3600) % 60).toFixed(0) + "秒";
+            } else {
+                timeunit[0].unit = (timeLength / (3600 * 24)).toFixed(0);
+                timeunit[1].unit = ((timeLength % 3600 * 24) / 3600).toFixed(0);
+                timeunit[2].unit = (((timeLength % 3600 * 24) % 3600) / 60).toFixed(0);
+                timeunit[3].unit = ((timeLength % 3600 * 24 / 3600) % 60).toFixed(0);
+                //timestring += (timeLength / (3600 * 24)).toFixed(0) + " 天" + ((timeLength % 3600 * 24) / 3600).toFixed(0) + "小时" + (((timeLength % 3600 * 24) % 3600) / 60).toFixed(0) + "分钟" + ((timeLength % 3600 * 24 / 3600) % 60).toFixed(0) + "秒";
+            }
+            for (var i = 0; i < 4; i++) {
+                if (timeunit[i].unit != 0) {
+                    timestring += timeunit[i].unit + timeunit[i].string;
+                }
+            }
+            return timestring;
+        }
+
+        draw();
+    </script>
