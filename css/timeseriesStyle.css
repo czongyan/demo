@@ -7,25 +7,25 @@
 
 .line {
 	fill: none;
-	stroke: steelblue;
+	/*	stroke: steelblue;*/
 	stroke-width: 1.5px;
 }
 
 .line1 {
 	fill: none;
-	stroke: red;
+	/*	stroke: #987cb9 ;*/
 	stroke-width: 1.5px;
 }
 
 .line2 {
 	fill: none;
-	stroke: #000;
+	/*	stroke:red ;*/
 	stroke-width: 1.5px;
 }
 
 .line3 {
 	fill: none;
-	stroke: green;
+	/*	stroke: green;*/
 	stroke-width: 1.5px;
 }
 
@@ -56,4 +56,10 @@ path.domain,
 .brush-info {
 	display: inline-block;
 	font-size: 14px;
+}
+
+.axis axis--y text {
+	text-shadow: 0 1px 0 #fff;
+	cursor: move;
+	fill: black;
 }
