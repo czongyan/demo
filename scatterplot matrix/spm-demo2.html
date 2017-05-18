@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<head>
+    <title>scatterplot matrix v4</title>
+</head>
+<style>
+    svg {
+        font: 10px sans-serif;
+        padding: 10px;
+    }
+
+    .axis,
+    .frame {
+        shape-rendering: crispEdges;
+    }
+
+    .axis line {
+        stroke: #ddd;
+    }
+
+    .axis path {
+        display: none;
+    }
+
+    .cell text {
+        font-weight: bold;
+        text-transform: capitalize;
+    }
+
+    .frame {
+        fill: none;
+        stroke: #aaa;
+    }
+
+    circle {
+        fill-opacity: .7;
+    }
+
+    circle.hidden {
+        fill: #ccc !important;
+    }
+
+    .extent {
+        fill: #000;
+        fill-opacity: .125;
+        stroke: #fff;
+    }
+
+</style>
+<h1 align="center">Scatterplot Matrix</h1>
+<b>数据选择：</b>
+<select id="segMap" class="segMap" onchange="draw()">
+		<option value="0" selecte="selected">segmentation ALL</option>
+        <option value="1" >segmentation 01</option>
+        <option value="2" >segmentation 02</option>
+        <option value="3" >segmentation 03</option>
+        <option value="4" >segmentation 04</option>
+        <option value="5" >segmentation 05</option>
+        <option value="6" >segmentation 06</option>
+    
+</select>
+<b>当前数据所属时间段：</b>
+<font id="timespan"></font>
+<b>数据量：</b>
+<font id="count"></font>
+<HR style="FILTER: progid:DXImageTransform.Microsoft.Glow(color=#987cb9,strength=10)" width="100%" color=#987cb9 SIZE=1>
+
+<body>
+    <script src="../d3.v4/d3.min.js"></script>
+    <script src="../jQuery/jquery-3.2.1.min.js"></script>
+    <script>
+        var timeArr = ["2016-3-4 9:43:00 至 2016-3-4 11:00:00",
+            "2016-3-4 13:32:00 至 2016-3-4 16:36:00",
+            "2016-3-8 9:53:00 至 2016-3-8 11:31:00",
+            "2016-3-8 13:5:00 至 2016-3-8 17:26:00",
+            "2016-3-30 9:14:00 至 2016-3-30 11:24:00",
+            "2016-3-30 13:58:00 至 2016-3-30 18:17:00"
+        ]
+        var count = 0;
+
+        var width = 960,
+            size = 230,
+            padding = 30;
+        var svg;
+
+        var x = d3.scaleLinear()
+            .range([padding / 2, size - padding / 2]);
+
+        var y = d3.scaleLinear()
+            .range([size - padding / 2, padding / 2]);
+
+        var xAxis = d3.axisBottom()
+            .scale(x)
+            .ticks(6);
+
+        var yAxis = d3.axisLeft()
+            .scale(y)
+            .ticks(6);
+
+        var color = d3.scaleOrdinal(d3.schemeCategory10);
+
+        function draw() {
+            //清除之前的svg
+            d3.selectAll("svg").remove();
+            count = 0;
+            //获取下拉框选项值
+            var obj = document.getElementById("segMap"),
+                segMap = obj.options[obj.options.selectedIndex].value;
+            //显示时间区间
+            document.getElementById("timespan").innerHTML = (segMap !== "0") ? timeArr[segMap - 1] : "当前显示多段";
+
+            d3.csv("testdata6.csv", function(error, data) {
+                if (error) throw error;
+
+                data = data.filter(function(d) {
+                    if (segMap == "0") {
+                        return d;
+                        console.log("当前显示：", segMap);
+                    } else {
+                        return d.segNum == segMap;
+                        console.log("当前显示：", segMap);
+                    }
+                })
+                data.forEach(function(d) {
+                    count += 1;
+                })
+                document.getElementById("count").innerHTML = count;
+
+                var domainByTrait = {},
+                    traits = d3.keys(data[0]).filter(function(d) {
+                        return d !== "segNum" && d !== "num";
+                    }),
+                    n = traits.length;
+
+                traits.forEach(function(trait) {
+                    domainByTrait[trait] = d3.extent(data, function(d) {
+                        return d[trait];
+                    });
+                });
+
+                svg = d3.select("body").append("svg")
+                    .attr("width", size * n + padding)
+                    .attr("height", size * n + padding)
+                    .append("g")
+                    .attr("transform", "translate(" + padding + "," + padding / 2 + ")");
+                
+               
+                xAxis.tickSize(size * n);
+                yAxis.tickSize(-size * n);
+
+                var brush = d3.brush()
+                    .on("start", brushstart)
+                    .on("brush", brushmove)
+                    .on("end", brushend)
+                    .extent([
+                        [0, 0],
+                        [size, size]
+                    ]);
+
+                svg.selectAll(".x.axis")
+                    .data(traits)
+                    .enter().append("g")
+                    .attr("class", "x axis")
+                    .attr("transform", function(d, i) {
+                        return "translate(" + (n - i - 1) * size + ",0)";
+                    })
+                    .each(function(d) {
+                        x.domain(domainByTrait[d]);
+                        d3.select(this).call(xAxis);
+                    });
+
+                svg.selectAll(".y.axis")
+                    .data(traits)
+                    .enter().append("g")
+                    .attr("class", "y axis")
+                    .attr("transform", function(d, i) {
+                        return "translate(0," + i * size + ")";
+                    })
+                    .each(function(d) {
+                        y.domain(domainByTrait[d]);
+                        d3.select(this).call(yAxis);
+                    });
+
+                var cell = svg.selectAll(".cell")
+                    .data(cross(traits, traits))
+                    .enter().append("g")
+                    .attr("class", "cell")
+                    .attr("transform", function(d) {
+                        return "translate(" + (n - d.i - 1) * size + "," + d.j * size + ")";
+                    })
+                    .each(plot);
+
+                // Titles for the diagonal.
+                cell.filter(function(d) {
+                        return d.i === d.j;
+                    }).append("text")
+                    .attr("fill", "black")
+                    .attr("x", padding)
+                    .attr("y", padding)
+                    .attr("dy", ".71em")
+                    .text(function(d) {
+                        return d.x;
+                    });
+
+                cell.call(brush);
+
+                //console.log(traits.map(function(d) { return domainByTrait[d];}));
+
+                function plot(p) {
+                    var cell = d3.select(this);
+
+                    x.domain(domainByTrait[p.x]);
+                    y.domain(domainByTrait[p.y]);
+
+                    cell.append("rect")
+                        .attr("class", "frame")
+                        .attr("x", padding / 2)
+                        .attr("y", padding / 2)
+                        .attr("width", size - padding)
+                        .attr("height", size - padding);
+
+                    cell.selectAll("circle")
+                        .data(data)
+                        .enter().append("circle")
+                        .attr("cx", function(d) {
+                            return x(d[p.x]);
+                        })
+                        .attr("cy", function(d) {
+                            return y(d[p.y]);
+                        })
+                        .attr("r", 4)
+                        .style("fill", function(d) {
+                            return color(d.segNum);
+                        });
+                }
+
+                var brushCell;
+
+                // Clear the previously-active brush, if any.
+                function brushstart(p) {
+                    if (brushCell !== this) {
+                        d3.select(brushCell).call(brush.move, null);
+                        x.domain(domainByTrait[p.x]);
+                        y.domain(domainByTrait[p.y]);
+                        brushCell = this;
+                    }
+                }
+
+                // Highlight the selected circles.
+                function brushmove(p) {
+                    if (d3.event.selection) {
+                        var e = d3.event.selection;
+                        svg.selectAll("circle").classed("hidden", function(d) {
+                            return x.invert(e[0][0]) > d[p.x] || x.invert(e[1][0]) < d[p.x] || y.invert(e[0][1]) < d[p.y] || y.invert(e[1][1]) > d[p.y];
+                        });
+                    }
+                }
+
+                // If the brush is empty, select all circles.
+                function brushend(p) {
+                    if (!d3.event.selection) svg.selectAll(".hidden").classed("hidden", false);
+                }
+
+
+
+            });
+
+
+
+
+
+        }
+
+        function cross(a, b) {
+            var c = [],
+                n = a.length,
+                m = b.length,
+                i, j;
+            for (i = -1; ++i < n;)
+                for (j = -1; ++j < m;) c.push({
+                    x: a[i],
+                    i: i,
+                    y: b[j],
+                    j: j
+                });
+            return c;
+        }
+
+        draw();
+
+    </script>
