@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>jQuery Test</title>
+    <script src="../static/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript" src="../static/d3.min.js"></script>
+    <style type="text/css">
+        .tooltip {
+            font-family: simsun;
+            font-size: 16px;
+            width: 120;
+            height: auto;
+            position: absolute;
+            text-align: center;
+            border-style: solid;
+            border-width: 1px;
+            background-color: white;
+            border-radius: 5px;
+        }
+
+        .sq_line_basic {
+            fill: none;
+            stroke: #bd0026;
+            stroke-width: 2px;
+        }
+
+        .sq_line_input {
+            fill: none;
+            stroke: #00441b;
+            stroke-width: 2px;
+        }
+
+        .sq_line_water {
+            fill: none;
+            stroke: #084081;
+            stroke-width: 2px;
+        }
+
+        .sq_line_control {
+            fill: none;
+            stroke: #7a0177;
+            stroke-width: 2px;
+        }
+
+    </style>
+</head>
+
+<body>
+    <h3 class="text-muted">计算不同距离函数下的MDS结果</h3>
+    <hr/>
+    <font>计算说明：</font>
+    <br/>
+    <font>基础参数计算其标准差（MW功率、THRTEMP主蒸汽汽温、YRHRTEMPT一次再热汽温、RRHRTEMPT二次再热汽温）</font>
+    <br/>
+    <font>喷水参数计算其在该时间段的积分（LAE21CG101XQ01-LAE24CG101XQ01过热器二级启动减温喷水）</font>
+    <br/>
+    <font>当前时间段个数：<b id="segnumber"></b></font>
+    <font>，时间范围：<b id="timerange"></b>，当前使用参数：<b id="parameters"></b>计算相似度矩阵</font>
+    <hr/>
+    <div>
+        <form>
+            Distance Type: <select style="width:80px" id="distype" class="distype">
+		<option value="euclidean" selected="selected">euclidean</option>
+        <option value="cosine" >cosine</option>
+        <option value="cityblock" >cityblock</option>
+        <option value="sqeuclidean" >sqeuclidean</option>
+        <option value="minkowski" >minkowski</option>
+        <option value="jaccard" >jaccard</option>
+        <option value="chebyshev" >chebyshev</option>
+    
+</select>
+
+            <p><button class="btn btn-success" id="calculate">calculate</button></p>
+        </form>
+    </div>
+    <div>
+        显示MDS结果
+        <script type="text/javascript">
+            var width = 300,
+                height = 300,
+                padding = {
+                    top: 30,
+                    right: 30,
+                    bottom: 30,
+                    left: 30
+                };
+
+            var hm_width = 960,
+                hm_height = 200,
+                cellSize = 17;
+
+            var sq_width = 680,
+                sq_height = 200;
+
+            var parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
+            var formatDate = d3.timeFormat("%Y-%m-%d %H:%M:%S");
+
+            var basicparameter = ["MW", "THRTEMP", "MSP", "YRHRTEMPT", "RRHRTEMPT"];
+            var waterparameter = ["LAE11CG101XQ01", "LAE12CG101XQ01", "LAE13CG101XQ01", "LAE14CG101XQ01", "LAE21CG101XQ01", "LAE22CG101XQ01", "LAE23CG101XQ01", "LAE24CG101XQ01"];
+            var inputparameter = ["O2", "TAF", "TOTALCOAL"];
+            var controlparameter = ['HHA11', 'HHA31', 'HHA51', 'HHA71', 'HHA81', 'HNA01A', 'HNA02A'];
+
+            var columns
+
+            $(function() {
+                $('#calculate').bind('click', function() {
+                    $.getJSON('/info', {
+                        segmentnumber: $('#segnumber').val()
+                    }, function(data) {
+                        console.log("timespan", data);
+                        $('#timerange').text(data.begin + " 至 " + data.end)
+                        $('#parameters').text(data.parameter)
+                    });
+
+                    $.getJSON('/mds', {
+                        distype: $('#distype').val()
+                    }, function(data) {
+                        console.log("data", data);
+                        $('#segnumber').text(data.begin.length);
+                        var points = [];
+                        for (var i = 0; i < data.x.length; i++) {
+                            points.push({
+                                x: data.x[i],
+                                y: data.y[i],
+                                begin: parseDate(data.begin[i]),
+                                end: parseDate(data.end[i])
+                            });
+                        }
+                        var svg = d3.select("body").append("svg")
+                            .attr("width", width)
+                            .attr("height", height)
+                            .append("g")
+                            .attr("class", "cell")
+                            .attr("transform", "translate(" + padding.left + "," + padding.top + ")");
+
+                        svg.selectAll("circle").remove()
+                        svg.selectAll(".axis").remove()
+
+
+                        var xScale = d3.scaleLinear()
+                            .range([0, width - padding.left - padding.right])
+                            .domain(d3.extent(points, function(d) {
+                                return d.x;
+                            }));
+                        var yScale = d3.scaleLinear()
+                            .range([height - padding.bottom - padding.top, 0])
+                            .domain(d3.extent(points, function(d) {
+                                return d.y;
+                            }));
+                        //绘制散点
+                        svg.selectAll("circle")
+                            .data(points)
+                            .enter()
+                            .append("circle")
+                            .attr("fill", "blue")
+                            .attr("cx", function(d) {
+                                return xScale(d.x);
+                            })
+                            .attr("cy", function(d) {
+                                return yScale(d.y);
+                            })
+                            .attr("r", 2);
+                        //添加提示框
+                        var tooltip = d3.select("body").append("div")
+                            .attr("class", "tooltip") //用于css设置类样式  
+                            .attr("opacity", 0.0);
+                        d3.selectAll("circle").on("mouseover", function(d) {
+                                tooltip.html("起始时间：" + formatDate(d.begin) + "</br>" + "终止时间：" + formatDate(d.end))
+                                    //设置tooltip的位置(left,top 相对于页面的距离)   
+                                    .style("left", (d3.event.pageX) + "px")
+                                    .style("top", (d3.event.pageY + 20) + "px")
+                                    .style("opacity", 1.0);
+                            })
+                            .on("mouseout", function(d) {
+                                tooltip.style("opacity", 0.0);
+                            })
+
+                        //绘制坐标轴
+                        var xAxis = d3.axisBottom(xScale),
+                            yAxis = d3.axisLeft(yScale);
+                        svg.append("g")
+                            .attr("class", "axis")
+                            .attr("transform", "translate(" + 0 + "," + (height - padding.bottom - padding.top) + ")")
+                            .call(xAxis);
+                        svg.append("g")
+                            .attr("class", "axis")
+                            .call(yAxis)
+                            .append("text")
+                            .attr("fill", "black")
+                            .attr("text-anchor", "left")
+                            .attr("font-size", 15)
+                            .attr("x", -10)
+                            .attr("y", 15)
+                            .attr("transform", "rotate(-90)")
+                            .text($('#distype').val());
+
+                        //加刷子
+                        var heatmapdata = [];
+                        var brush = d3.brush()
+                            .on("brush", function() {
+                                e = d3.event.selection;
+                                heatmapdata = [];
+                                d3.selectAll("circle")
+                                    .attr("fill", function(d, i) {
+                                        if (xScale.invert(e[0][0]) <= points[i].x && xScale.invert(e[1][0]) >= points[i].x && yScale.invert(e[1][1]) <= points[i].y && yScale.invert(e[0][1]) >= points[i].y) {
+                                            //console.log("选中", i, points[i].begin)
+                                            heatmapdata.push(points[i])
+                                            return "red";
+                                        } else {
+                                            return "blue";
+                                        }
+                                    })
+                            })
+                            .on("end", function(d) {
+                                if (!d3.event.selection) {
+                                    d3.selectAll("circle").attr("fill", "blue");
+                                    d3.selectAll(".heatmap").remove();
+                                } else {
+                                    console.log("热力图要显示的数据", heatmapdata);
+                                    heatmap(heatmapdata);
+                                }
+                            })
+                            .extent([
+                                [0, 0],
+                                [width - padding.left - padding.right, height - padding.bottom - padding.top]
+                            ]);
+                        d3.select(".cell").call(brush);
+
+                        //传入MDS选中的点（即时间段）生成矩阵热力图
+                        function heatmap(heatmapdata) {
+                            d3.select(".heatmap").remove();
+                            d3.csv("/static/TRAPZ.csv", function(error, csv) {
+                                if (error) throw error;
+                                columns = csv.columns;
+                                var data = [];
+                                var flag=-1;
+                                //console.log("columns", csv)
+                                csv.forEach(function(d) {
+                                    for (i = 0; i < heatmapdata.length; i++) {
+                                        if (parseDate(d.timeSegBegin) - heatmapdata[i].begin == 0) {
+                                            //console.log("已核对", heatmapdata[i].begin);
+                                            data.push(d)
+                                        }
+                                    }
+                                })
+
+                                var color = d3.scaleQuantize()
+                                    .domain([-10, 1000])
+                                    .range(["#a50026", "#d73027", "#f46d43", "#fdae61", "#fee08b", "#ffffbf", "#d9ef8b", "#a6d96a", "#66bd63", "#1a9850", "#006837"]);
+                                //从黄色渐变到红色----输出参数
+                                var redcolor = d3.scaleQuantize()
+                                    //.domain(d3.extent())
+                                    .range(["#ffffcc", "#ffeda0", "#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"]);
+                                //从绿色渐变到蓝色---喷水参数
+                                var bluecolor = d3.scaleQuantize()
+                                    //.domain([-10, 1000])
+                                    .range(["#f7fcf0", "#e0f3db", "#ccebc5", "#a8ddb5", "#7bccc4", "#4eb3d3", "#2b8cbe", "#0868ac", "#084081"]);
+                                //从白色渐变到绿色---输入参数（凤氧煤）
+                                var greencolor = d3.scaleQuantize()
+                                    //.domain([-10, 1000])
+                                    .range(["#f7fcf5", "#e5f5e0", "#c7e9c0", "#a1d99b", "#74c476", "#41ab5d", "#238b45", "#006d2c", "#00441b"]);
+                                //从白色渐变到粉色---摆角参数
+                                var pinkcolor = d3.scaleQuantize()
+                                    .range(["#fff7f3", "#fde0dd", "#fcc5c0", "#fa9fb5", "#f768a1", "#dd3497", "#ae017e", "#7a0177", "#49006a"]);
+
+
+                                //添加svg，每个参数类型一个svg
+                                var heatmap = d3.select("body").append("svg")
+                                    .attr("transform", "translate(" + 0 + "," + 0 + ")")
+                                    .attr("class", "heatmap")
+                                    .attr("width", hm_width)
+                                    .attr("height", hm_height)
+                                    .append("g")
+                                    .attr("transform", "translate(" + 50 + "," + 0 + ")");
+
+                                //添加标题
+                                heatmap.append("text")
+                                    .attr("transform", "translate(-6,100)rotate(-90)")
+                                    .attr("font-family", "sans-serif")
+                                    .attr("font-size", 15)
+                                    .attr("text-anchor", "middle")
+                                    .text("各时间段参数统计")
+
+
+                                for (var c = 2; c < columns.length; c++) {
+                                    //console.log(d[data.columns[c]])
+                                    var rectv = heatmap.append("g")
+                                        .attr("class", "rect")
+                                        .attr("fill", "none")
+                                        .attr("stroke", "#ccc")
+                                        .selectAll(".rect").data(data).enter().append("rect")
+                                        .attr("width", (hm_width - 400) / data.length)
+                                        .attr("height", hm_height / columns.length)
+                                        //x,y表示rect左上角坐标
+                                        .attr("x", function(d, i) {
+                                            return i * (hm_width - 400) / data.length;
+                                        })
+                                        .attr("y", function() {
+                                            return c * (hm_height - 20) / columns.length;
+                                        })
+                                        .attr("fill", function(d) {
+                                            console.log(columns[c]);
+                                            if (basicparameter.indexOf(columns[c]) != -1) {
+                                                //console.log(columns[c],"属于输出参数，使用红色brew")
+                                                redcolor.domain(d3.extent(data, function(p) {
+                                                    return p[columns[c]]
+                                                }))
+                                                return redcolor(d[columns[c]]);
+                                            }
+                                            if (inputparameter.indexOf(columns[c]) != -1) {
+                                                //console.log(columns[c],"属于输入参数，使用绿色brew")
+                                                //console.log("值域：",d3.extent(data,function(p){return p[columns[c]]}))
+                                                greencolor.domain(d3.extent(data, function(p) {
+                                                    return p[columns[c]]
+                                                }))
+                                                return greencolor(d[columns[c]]);
+                                            }
+                                            if (waterparameter.indexOf(columns[c]) != -1) {
+                                                //console.log(columns[c],"属于喷水参数，使用蓝色brew")
+                                                bluecolor.domain(d3.extent(data, function(p) {
+                                                    return p[columns[c]]
+                                                }))
+                                                return bluecolor(d[columns[c]]);
+                                            }
+                                            if (controlparameter.indexOf(columns[c]) != -1) {
+                                                //console.log(columns[c],"属于摆角参数，使用粉色brew")
+                                                pinkcolor.domain(d3.extent(data, function(p) {
+                                                    return p[columns[c]]
+                                                }))
+                                                return pinkcolor(d[columns[c]]);
+                                            }
+
+                                            //return color(d[columns[c]]);
+                                        })
+                                        .on("click", function(d) {
+                                            d3.selectAll(".rect").style("stroke","#ccc");
+                                            var rectwidth = (hm_height - 20) / columns.length
+                                            var selected_para
+                                            for (var n = 0; n < columns.length; n++) {
+                                                (d3.mouse(this)[1] > n * rectwidth && d3.mouse(this)[1] < (n + 1) * rectwidth) ? selected_para = n: 0;
+                                            }
+                                            sequence(d, selected_para);
+                                            d3.select(this).style("stroke", "red");
+                                        })
+                                        .on("mouseover", function(d) {
+                                            //console.log("鼠标移动",d3.select(this))
+                                            d3.select(this).style("stroke", "red");
+                                        })
+                                        .on("mouseout", function(d) {
+                                            d3.select(this).style("stroke", "#ccc")
+                                        })
+                                        .append("title")
+                                        .text(function(d) {
+                                            return "起始时间：" + d.timeSegBegin + " 参数" + columns[c] + ": " + d[columns[c]];
+                                        })
+                                }
+                            });
+
+                        };
+                        //传入热力图中选中的块（即时间段）生成具体参数时序图（功率等）/平行坐标（摆角）
+                        function sequence(seg, para) {
+                            d3.selectAll(".sequence").remove();
+                            selected_para = columns[para]
+                            var loadingpath, linecolor;
+                            console.log("选中参数：", columns[para])
+                            console.log("选中数据：", seg)
+
+                            var sequence = d3.select("body").append("svg")
+                                .attr("class", "sequence")
+                                .attr("width", sq_width)
+                                .attr("height", sq_height)
+                                .append("text")
+                                .attr("transform", "translate(50,150)")
+                                .attr("fill", "black")
+                                .text("起始时间：" + seg.timeSegBegin + " 终止时间：" + seg.timeSegEnd + " 参数：" + selected_para)
+
+                            //如果选中输入参数
+                            if (basicparameter.indexOf(selected_para) != -1) {
+                                loadingpath = "/static/basic_march_1min.csv";
+                                linecolor = "sq_line_basic";
+                            }
+                            if (waterparameter.indexOf(selected_para) != -1) {
+                                loadingpath = "/static/water_march_1min.csv";
+                                linecolor = "sq_line_water";
+                            }
+                            if (inputparameter.indexOf(selected_para) != -1) {
+                                loadingpath = "/static/O2coal_march_1min.csv";
+                                linecolor = "sq_line_input";
+                            }
+                            if (controlparameter.indexOf(selected_para) != -1) {
+                                loadingpath = "/static/control_march_1min.csv";
+                                linecolor = "sq_line_control";
+                            }
+
+                            d3.csv(loadingpath, function(error, data) {
+                                if (error) throw error;
+                                data = data.filter(function(d) {
+                                    d.date = parseDate(d.date);
+                                    for(var p=2;p<columns.length;p++){
+                                        d[columns[p]]=parseFloat(d[columns[p]]);
+                                    }    
+                                    if (d3.timeMinute.count(d.date, parseDate(seg.timeSegBegin)) <= 0 && d3.timeMinute.count(d.date, parseDate(seg.timeSegEnd)) >= 0) {
+                                        return true;
+                                    }
+                                })
+                                //console.log("截取后数据", data.date);
+                                //坐标轴
+                                var xScale = d3.scaleTime()
+                                    .range([0, sq_width - 50])
+                                    .domain(d3.extent(data, function(d) {
+                                        return d.date;
+                                    })),
+                                    //.domain([parseDate(seg.timeSegBegin),parseDate(seg.timeSegEnd)])
+
+                                    yScale = d3.scaleLinear()
+                                    .range([sq_height - 50, 0])
+                                    .domain([d3.min(data, function(d) {
+                                            return d[selected_para];
+                                        }),
+                                        d3.max(data, function(d) {
+                                            return d[selected_para];
+                                        })
+                                    ]);
+
+                                console.log("值域", d3.extent(data, function(d) {
+                                    return d[selected_para];
+                                }))
+
+                                var xAxis = d3.axisBottom(xScale),
+                                    yAxis = d3.axisLeft(yScale);
+
+                                d3.select(".sequence").append("g")
+                                    .attr("class", "sq_axis")
+                                    .attr("transform", "translate(50," + (sq_height - 40) + ")")
+                                    .call(xAxis);
+                                d3.select(".sequence").append("g")
+                                    .attr("class", "sq_axis")
+                                    .attr("transform", "translate(50,10)")
+                                    .call(yAxis);
+
+                                var line = d3.line()
+                                    .x(function(d) {
+                                        return xScale(d.date);
+                                    })
+                                    .y(function(d) {
+                                        return yScale(d[selected_para]);
+                                    });
+                                d3.select(".sequence").append("g")
+                                    .attr("class", linecolor)
+                                    .attr("transform", "translate(50," + 10 + ")")
+                                    .append("path")
+                                    .attr("d", line(data))
+                            })
+                        }
+
+                    });
+                    return false;
+                })
+            });
+
+        </script>
+
+    </div>
+</body>
+
+</html>
