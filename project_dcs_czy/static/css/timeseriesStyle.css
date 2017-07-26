@@ -1,0 +1,64 @@
+/** Styles for TIMESERIES */
+
+.timeseries {
+	width: 100%;
+	padding: 2% 0;
+}
+
+.line {
+	fill: none;
+	/*	stroke: steelblue;*/
+	stroke-width: 1.5px;
+}
+
+.line1 {
+	fill: none;
+	/*	stroke: #987cb9 ;*/
+	stroke-width: 1.5px;
+}
+
+.line2 {
+	fill: none;
+	/*	stroke:red ;*/
+	stroke-width: 1.5px;
+}
+
+.line3 {
+	fill: none;
+	/*	stroke: green;*/
+	stroke-width: 1.5px;
+}
+
+path.domain,.tick line {
+    fill: none;
+	stroke: #000;
+	stroke-width: 1px;
+    shape-rendering: crispEdges;
+}
+
+.brush .extent {
+	stroke: #fff;
+	fill-opacity: .125;
+	shape-rendering: crispEdges;
+}
+
+.clear-brush {
+	display: none;
+}
+
+.brush-control {
+	padding: .5%;
+	width: 100%;
+	text-align: center;
+}
+
+.brush-info {
+	display: inline-block;
+	font-size: 14px;
+}
+
+.axis axis--y text {
+	text-shadow: 0 1px 0 #fff;
+	cursor: move;
+	fill: black;
+}

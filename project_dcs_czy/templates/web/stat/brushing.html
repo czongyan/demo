@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+    <title>Brushing Example</title>
+    <link rel="stylesheet" type="text/css" href="../static/css/d3.parcoords.css">
+    <link rel="stylesheet" type="text/css" href="../static/css/style.css">
+    <script src="../static/D3/d3.js"></script>
+    <script src="../static/js/d3.svg.multibrush.js"></script>
+    <script src="../static/js/d3.parcoords.js"></script>
+    <script src="../static/js/sylvester.js"></script>
+    <script src="../static/jquery/jquery-3.1.1.min.js"></script>
+
+    <!--显示多选框-->
+    <style>
+        ul {
+            list-style-type: none;
+            height: 40px;
+        }
+        
+        li {
+            border: solid 1px;
+            width: 130px;
+            float: left;
+        }
+    </style>
+</head>
+
+<body>
+    <p>
+        <label for="sltBrushMode">Brush mode:</label>
+        <select id="sltBrushMode">
+  </select>
+        <label id="lblPredicate" for="sltPredicate">Predicate:</label>
+        <select id="sltPredicate">
+    <option>AND</option>
+    <option>OR</option>
+  </select>
+        <button id="btnReset">Reset Brushes</button>
+    </p>
+    <p>Use this slider to change the curve smoothness. The current value is <strong id="smooth">0</strong><br>
+        <input id="smoothness" type="range" min="0" max="0.25" step="0.01" value="0.0">
+    </p>
+    <p>
+        <p>Use this slider to change the bundling strength. The current value is <strong id="strength">0.5</strong><br>
+            <input type="range" min="0" max="1" value=".5" step="0.05" id="bundling">
+        </p>
+        <div id="bundleDimension">Bundle using clusters determined by: </div>
+    </p>
+    <div id='property_set'>
+        <p>dispaly axis:</p>
+        <ul id="myUl">
+        </ul>
+    </div>
+
+
+    <p> 设置量程：
+        <select id="changeE" onchange="changeExtend_obj(this)">
+				</select> 最小
+        <input type="text" name="minE" id="minE" value="" /> 最大
+        <input type="text" name="maxE" id="maxE" value="" />
+
+        <input type="button" name='sureChange' value="更改量程" onclick="changeExtend_val()">
+    </p>
+    <div id="example" class="parcoords" style="width:1200px;height:600px;"></div>
+    <!--
+    <p>creates a custom <a href="https://github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantitative">quantitative color scale</a> using <a href="http://bl.ocks.org/3014589">L*a*b interpolation</a>, and enables brushing.</p>
+    <p id="pStrums" style="visibility: hidden;"></p>
+-->
+</body>
+<script type="text/javascript">
+    // quantitative color scale
+    var blue_to_brown = d3.scale.linear()
+        .domain([9, 50])
+        .range(["steelblue", "brown"])
+        .interpolate(d3.interpolateLab);
+    //渐进渲染
+    var colorgen = d3.scale.ordinal()
+        .range(["#a6cee3", "#1f78b4", "#b2df8a", "#33a02c",
+            "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00",
+            "#cab2d6", "#6a3d9a", "#ffff99", "#b15928"
+        ]);
+
+    var color = function(d) {
+        //        console.log(d['sumLAE']);
+        if (d['LAE1'] < 100) {
+            return '#33a02c';
+        } else if (d['LAE1'] > 400) {
+            return 'e31a1c';
+        } else {
+            return '1f78b4';
+        }
+    };
+    //    var color = function(d) {
+    //        return colorgen(d['HHA11']);
+    //        //                return blue_to_brown(d['MW']);
+    //    };
+
+    var parcoords = d3.parcoords()("#example")
+        .color(color)
+        .alpha(0.4)
+        .margin({
+            top: 20,
+            left: 60,
+            bottom: 20,
+            right: 0
+        });
+    parcoords.svg.selectAll("text")
+        .style("font", "10px sans-serif");
+
+    var data_info = ['endDate'],
+        property_name, select_property, select_val;
+    // load csv file and create the chart
+    $.ajax({
+        url: '/coordinate_info',
+        type: 'GET',
+        dataType: 'json',
+        success: function(data) {
+            data_obj = eval('(' + data[0] + ')');
+            property_name = data[1];
+
+            $.each(data_obj, function(idx, item) {
+                if (idx == 0) {
+                    return true; //同countinue，返回false同break 
+                }
+                data_info.push(item);
+                //                draw_parcoords(data_info);
+            });
+            init();
+            //        console.log(proverty_name.length);
+            //格式化数据格式
+            //d3.csv('../mean20160301.csv', function(data) {
+            var arr = [];
+            parcoords
+                .data(data_info)
+                .bundlingStrength(0) //设置绑定强度
+                .smoothness(0) //折线将以指定的曲率来渲染
+                .bundleDimension('startDate') //捆绑坐标轴
+                .hideAxis(arr) //设置隐藏属性轴
+                //                .flipAxes(['startDate','MW'])//准许不动画时翻转的轴
+                .composite("highlight")
+                .render() //渲染折线
+                .shadows() //
+                .reorderable() //实现拖拽重排序
+                .mode('queue')
+                //                .clear('highlight')
+                .brushMode("1D-axes") // enable brushing
+                .interactive(); //激活与JavaScript控制台一起使用的交互模式
+
+            // smoothness
+            d3.select("#smoothness").on("change", function() {
+                d3.select("#smooth").text(this.value);
+                parcoords.smoothness(this.value).render();
+            });
+
+            //设置捆绑属性初始化
+            d3.select("#bundling").on("change", function() {
+                d3.select("#strength").text(this.value);
+                parcoords.bundlingStrength(this.value).render();
+            });
+            var select = d3.select("#bundleDimension").append("select").on("change", changeBundle);
+            var options = select.selectAll('option').data(d3.keys(parcoords.dimensions()));
+            options.enter()
+                .append("option")
+                .attr("value", function(d) {
+                    return d;
+                })
+                .text(function(d) {
+                    return d;
+                });
+
+            function changeBundle() {
+                parcoords.bundleDimension(this.value);
+            }
+        }
+    });
+
+    //设置刷子模式初始化
+    var sltBrushMode = d3.select('#sltBrushMode')
+
+    sltBrushMode.selectAll('option')
+        .data(parcoords.brushModes())
+        .enter()
+        .append('option')
+        .text(function(d) {
+            return d;
+        });
+
+    sltBrushMode.on('change', function() {
+        parcoords.brushMode(this.value);
+        switch (this.value) {
+            case 'None':
+                d3.select("#pStrums").style("visibility", "hidden");
+                d3.select("#lblPredicate").style("visibility", "hidden");
+                d3.select("#sltPredicate").style("visibility", "hidden");
+                d3.select("#btnReset").style("visibility", "hidden");
+                break;
+            case '2D-strums':
+                d3.select("#pStrums").style("visibility", "visible");
+                break;
+            default:
+                d3.select("#pStrums").style("visibility", "hidden");
+                d3.select("#lblPredicate").style("visibility", "visible");
+                d3.select("#sltPredicate").style("visibility", "visible");
+                d3.select("#btnReset").style("visibility", "visible");
+                break;
+        }
+    });
+
+    sltBrushMode.property('value', '1D-axes');
+
+    d3.select('#btnReset').on('click', function() {
+        parcoords.brushReset();
+    })
+    d3.select('#sltPredicate').on('change', function() {
+        parcoords.brushPredicate(this.value);
+    });
+
+    function init() {
+        //动态化复选框
+        executerDiv = document.getElementById('myUl');  
+        executerDiv.innerHTML = "";   
+        var ul = document.createElement("ul");
+        var li = document.createElement("li");                  
+        li.appendChild(document.createTextNode("选择要隐藏的属性轴"));       
+        ul.appendChild(li);    
+        for (var i = 0; i < property_name.length; i++) {        // 加入复选框
+            if (property_name[i] == 'startDate')
+                continue;
+            else {
+                var checkBox = document.createElement("input");       
+                checkBox.setAttribute("type", "checkbox");       
+                checkBox.setAttribute("id", i);       
+                checkBox.setAttribute("name", "property");
+                checkBox.setAttribute("value", property_name[i]);
+                var li = document.createElement("li");       
+                li.appendChild(checkBox);              
+                li.appendChild(document.createTextNode(property_name[i]));       
+                ul.appendChild(li);     
+            }
+        }
+        var checkBox = document.createElement("input");       
+        checkBox.setAttribute("type", "checkbox");       
+        checkBox.setAttribute("id", 'allChecked');       
+        checkBox.setAttribute("name", "allChecked");
+        checkBox.setAttribute("value", '全选/取消');
+        checkBox.onclick = DoCheck;
+        //            checkBox.addEventListener("onclick", "DoCheck()");
+        var li = document.createElement("li");       
+        li.appendChild(checkBox);              
+        li.appendChild(document.createTextNode('全选/取消'));       
+        ul.appendChild(li);  
+        executerDiv.appendChild(ul);
+        d3.select('#property_set').append('input').attr('id', 'changeP').attr('value', '确定隐藏属性').attr('type', 'button').on("click", changeProperty);
+
+        //动态显示可更改量程的属性
+        e_obj = document.getElementById("changeE");
+        e_obj.innerHTML = "";
+        e_obj.options[0] = new Option("请选择更改量程的属性", "");
+        var j = 1;
+        for (var i in property_name) {
+            if (j < property_name.length)
+                e_obj.options[j] = new Option(property_name[j], property_name[j]);
+            j++;
+        }
+    }
+
+    function DoCheck() {
+        var ch = document.getElementsByName("property");
+        if (document.getElementsByName("allChecked")[0].checked == true) {
+            for (var i = 0; i < ch.length; i++) {
+                ch[i].checked = true;
+            }
+        } else {
+            for (var i = 0; i < ch.length; i++) {
+                ch[i].checked = false;
+            }
+        }
+    }
+
+    function changeProperty() {
+        var obj = document.getElementsByName('property');
+        select_property = new Array();
+        for (var i = 0; i < obj.length; i++) {
+            if (obj[i].checked) select_property.push(obj[i].value); //如果选中，将value添加到变量s中 
+        }
+        //动态显示可更改量程的属性
+        var e_obj = document.getElementById("changeE");
+        e_obj.innerHTML = "";
+        console.log(d3.keys(parcoords.dimensions()));
+        var arr=d3.keys(parcoords.dimensions());
+        e_obj.options[0] = new Option("请选择更改量程的属性", "");
+        j = 1;
+        for (var i in arr) {
+            e_obj.options[j] = new Option(arr[i], arr[i]);
+            j++;
+        }
+        //        parcoords.dimensions({
+        //            "MW": {
+        //                orient: 'right',
+        //                type: 'number',
+        //                tickPadding: 0,
+        //                innerTickSize: 8,
+        //                extent: [700, 980]
+        //            }
+        //        }).render().updateAxes();
+        var arr_2 = ['endDate', 'MSP', 'THRTEMP', 'YRHRPRS', 'RRHRPRS', 'YRHRTEMPT', 'RRHRTEMPT', 'MWD2', 'HHA31', 'HHA51', 'HHA71', 'HHA81', 'HNA01A', 'HNA01B'];
+        parcoords.hideAxis(select_property).render();
+    }
+
+    function changeExtend_obj(d) {
+        select_val = d.options[d.options.selectedIndex].value;
+    }
+
+    function changeExtend_val() {
+        changeExtend = new Array();
+        var minE = document.getElementById("minE").value;
+        var maxE = document.getElementById("maxE").value;
+        if (minE == " " || maxE == " ")
+            alert("请确认输入了量程值！");
+        else {
+            console.log(select_val)
+            changeExtend = [minE, maxE];
+            parcoords.dimensions({
+                select_val: {
+                    orient: 'right',
+                  type: 'number',
+                    tickPadding: 0,
+                    innerTickSize: 8,
+                    extent: changeExtend
+                }
+            });
+            parcoords.hideAxis(select_property).render();
+        }
+    }
+</script>
+
+</html>

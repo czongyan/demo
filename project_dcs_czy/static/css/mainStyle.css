@@ -1,0 +1,47 @@
+body {
+	font: 10px sans-serif;
+	shape-rendering: crispEdges;
+}
+
+svg {
+	stroke-width: 0;
+	stroke: blue;
+}
+
+.minute {
+	fill: #fff;
+	stroke: #ccc;
+	/*stroke-width: 1px;*/
+	opacity: 1;
+	/*			filter:alpha(opacity=100);*/
+}
+
+.mw {
+	padding: inherit;
+	margin-bottom: 0px;
+	margin-top: 0px;
+	stroke-width: 0;
+}
+
+
+
+.axis axis--y text {
+	text-shadow: 0 1px 0 #fff;
+	/*			cursor: move;*/
+	fill: black;
+}
+/*
+#timeseries_0_1 {
+	border-bottom: 1px solid #ebebeb;
+	border-right: 2px solid #ccc;
+}
+*/
+.time-info{
+		border-top: 2px solid #ccc;
+}
+ol, ul {
+    list-style: none;
+}
+a {
+    text-decoration: none;
+}

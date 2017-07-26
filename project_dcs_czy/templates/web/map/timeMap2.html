@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>日历形式显示</title>
+    <link href="../../static/css/dateSlider.css" type="text/css" rel="stylesheet" />
+    <script language="javascript" src="../../static/js/jquery.js"></script>
+    <script language="javascript" src="../../static/js/jquery.ui.js"></script>
+    <script language="javascript" src="../../static/js/DateSlider.js"></script>
+    <script language="javascript" src="../../static/js/timeseries1-3.js"></script>
+    <link src="../../static/css/d3.parcoords.css" type="text/css" rel="stylesheet" />
+    <script language="javascript" src="../../static/js/DataTools.js"></script>
+    <link href="../../static/css/timeseriesStyle.css" type="text/css" rel="stylesheet" />
+    <link href="../../static/css/mainStyle.css" type="text/css" rel="stylesheet" /> </head>
+
+<body>
+    <div id="main">
+        <div id="filter" style="width:970px; height:60px;margin:10px 20px">
+            <p>原始数据展示： 像素块长度
+                <input type="text" name="pixleSize" id="pixleSize" value="2" style="width:30px" /> &nbsp;&nbsp;&nbsp; 像素块宽度：
+                <input type="text" name="pixleHeight" id="pixleHeight" value="10" style="width:30px" /> &nbsp;&nbsp;&nbsp; 像素块边缘大小：
+                <input type='text' name="strokeSize" id="strokeSize" value="1" style="width:30px" /> &nbsp;&nbsp;&nbsp;
+                <select id="selectMap" class="selectMap" onchange="reload()">
+				</select> &nbsp;&nbsp;&nbsp;
+                <input type="button" id="submit" name="submit" onclick="reload()" value="确定" />
+                <!--				<input type="button" id="brush_clear" name="brush_clear" onclick="brush_clear();" value="清空刷子" /> </p>-->
+            </p>
+            <p>数据重采样： 采样间隔
+                <select id="interval" class="interval" onchange="reload();">
+					<option value="1" selected="selected">1分钟</option>
+					<option value="5" >5分钟</option>
+                    <option value="10" >10分钟</option>
+                    <option value="30" >30分钟</option>
+                    <option value="60" >1小时</option>
+                    <option value="120" >2小时</option>
+				</select> &nbsp;&nbsp;&nbsp;
+                <select id="stat_obj" class="stat_obj" onchange="reload();">
+                    <option value="">选择采样统计方式</option>
+					<option value="mean">均值</option>
+					<option value="std" >平均方差</option>
+				</select> &nbsp;&nbsp;&nbsp;</p>
+        </div>
+        <hr/>
+        <div class="dateSlider" id="dateSlider" style="width:900px;margin:40px 20px"> </div>
+        <div id="calendar" style="width:900px;margin:10px 5px 10px 20px"></div>
+        <div style="width:960px;height:270px;margin:20px 20px">
+            <div id="timeseries_0_1" style="width:460px;height:200px;float:left"></div>
+            <div id="timeseries_0_2" style="width:460px;height:200px; margin:10 10 0 0;float:left"></div>
+        </div>
+        <hr/>
+        <div id="layout_change" style="width:960px;margin:20px 20px"> </div>
+        <div id="layout_show"> </div>
+        <div style="margin:10px 20px">
+            <p><label id="cod_detail"></label></p>
+            <iframe id="iframe" frameBorder="0" width="1300" scrolling="yes" height="1000"></iframe></div>
+    </div>
+    <footer></footer>
+    <script src="../../static/D3/d3.v3.min.js"></script>
+    <!--	<script src="http://d3js.org/d3.v4.min.js"></script>-->
+    <script>
+        //定义全局变量
+        var cord_f, cord_s; //detail 截取时间
+        var drawflag = 0,
+            firstIndex, secondIndex, selectMap = 'MW',
+            interval = 1,
+            stat_obj = '';
+        var cellSize = 3,
+            cellheight = 10,
+            strokeSize = 1;
+        var dir = "data/";
+        var fileName = "../../static/data/raw/mpt2016030" + interval + "new.csv";
+        //init();
+        //转换日期格式
+        var format = d3.time.format("%Y-%m-%d").parse,
+            parseDate = d3.time.format("%Y-%m-%d %H:%M:%S");
+        var Months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+        var Hours = ["1h", "2h", "3h", "4h", "5h", "6h", "7h", "8h", "9h", "10h", "11h", "12h", "13h", "14h", "15h", "16h", "17h", "18h", "19h", "20h", "21h", "22h", "23h", "24h"];
+        var firstDate, endDate, selectS, selectE;
+        //颜色插值函数
+//        var a = d3.rgb(0, 255, 0); //绿色
+//        var b = d3.rgb(255, 0, 0); //红色
+//        var c = d3.rgb(255, 97, 0); //橙色
+        var a="#ffffcc",b="#800026";
+        var compute = d3.interpolateHsl(a, b);
+        //var compute = d3.interpolateHsl(b, c);
+        var color = d3.scale.linear().range([0, 1]);
+        //数据存储单元
+        var csv_nest, csv_data, num, csv_range; //各变量量程
+        loadAll();
+        var brush_obj, line_obj, brush_foreground, line_brush_selection;
+        var line_brush_num = 0;
+
+        function init() {
+            cellSize = document.getElementById("pixleSize").value; // cell size
+            cellheight = $("#pixleHeight").val();
+            strokeSize = $("#strokeSize").val();
+            var obj_selectMap = document.getElementById("selectMap");
+            selectMap  =  obj_selectMap.options[obj_selectMap.options.selectedIndex].value;  //这是取值 
+            //时间间隔
+            var obj_interval = document.getElementById("interval");
+            interval  =  obj_interval.options[obj_interval.options.selectedIndex].value;
+            fileName = "../../static/data/raw/mpt2016030" + interval + ".csv";
+            var obj_stat = document.getElementById("stat_obj");
+            stat_obj = obj_stat.options[obj_stat.options.selectedIndex].value;
+        }
+        var json_obj, json_data;
+
+        function data_auto(f, s) {
+            $.ajax({
+                url: '/dataRaw',
+                type: 'GET',
+                data: {
+                    selectType: selectMap,
+                    property_1: f,
+                    property_2: s,
+                    interval: interval,
+                    stat_obj: stat_obj
+                },
+                success: function(arg) {
+                    json_obj = jQuery.parseJSON(arg[0]);
+                    var stat_data = arg[1];
+                    $('#dataTxt').text(selectMap + "： 平均值：" + stat_data.mean + "  最大值：" + stat_data.max + "  最小值：" + stat_data.min);
+                    index = 0;
+                    layer = 0;
+                    for (var i in json_obj) {
+                        json_obj[i].index = index;
+                        json_obj[i][selectMap] = parseInt(+json_obj[i][selectMap]);
+                        json_obj[i].keyDate = json_obj[i].date;
+                        json_obj[i].date = parseDate.parse(json_obj[i].date);
+                        json_obj[i].day = json_obj[i].date.getDate();
+                        json_obj[i].minute = json_obj[i].date.getMinutes();
+                        index++;
+                    }
+                    json_data = []
+                    for (var i in json_obj) {
+                        json_data.push(json_obj[i]);
+                    }
+                    draw_auto(json_data);
+                },
+                error: function() {
+                    console.log('失败');
+                }
+            });
+        };
+
+        function draw_auto(json_data) {
+            //加载像素热力图
+            document.getElementById("calendar").innerHTML = "";
+            init();
+            var width = ((24 * 60 / interval) + 10) * cellSize,
+                height = 600;
+            var svg = d3.select("div#calendar");
+            color.domain(d3.extent(json_data, function(d) {
+                return d[selectMap];
+            }));
+            var layer = d3.max(json_data, function(d) {
+                return d.date.getDate();
+            }) - d3.min(json_data, function(d) {
+                return d.date.getDate();
+            }) + 1;
+            console.log(layer);
+            var rectSVG = svg.append("svg").attr("width", width).attr("height", (layer + 1) * cellheight).attr("class", "MW");
+            var rectG = rectSVG.append('g').attr('class', 'rect -g').attr("transform", "translate(5,0)");
+            var min_layer = d3.min(json_data, function(d) {
+                return d.date.getDate();
+            });
+            //            console.log(min_layer)
+            var rect = rectG.selectAll(".minute").data(json_data).enter().append("rect").attr('id', function(d) {
+                    return 'rect-' + d.index
+                }).attr("class", "minute").attr("width", cellSize).attr("height", cellheight).attr("x", function(d) {
+                    //一小时60分钟 5分钟间隔 划分为12个元素，每个元素占piexlSize像素
+                    return (d.date.getHours() * (60 / interval) + d.date.getMinutes() / interval) * cellSize;
+                }).attr("y", function(d) {
+                    return (d.day - min_layer) * cellheight;
+                }).style("fill", function(d) {
+                    return compute(color(d[selectMap]));
+                }).style("stroke-width", strokeSize)
+                //.on("mouseover",mouseover)
+                .on("mousedown", mouseDown);
+            rect.append("title").text(function(d) {
+                return d.keyDate + "  " + selectMap + "：" + d[selectMap];
+            });
+
+            //定义一个线性渐变  
+            var defs = rectSVG.append("defs");
+
+            var linearGradient = defs.append("linearGradient")
+                .attr("id", "linearColor")
+                .attr("x1", "0%")
+                .attr("y1", "0%")
+                .attr("x2", "100%")
+                .attr("y2", "0%");
+
+            var stop1 = linearGradient.append("stop")
+                .attr("offset", "0%")
+                .style("stop-color", a.toString());
+
+            var stop2 = linearGradient.append("stop")
+                .attr("offset", "100%")
+                .style("stop-color", b.toString());
+
+            var colorRect = rectG.append("rect")
+                .attr("x", 15)
+                .attr("y",(layer + 1) * cellheight)
+                .attr("width", 200)
+                .attr("height", 20)
+                .style("fill", "url(#" + linearGradient.attr("id") + ")");
+
+        }
+
+        function draw() {
+            //加载像素热力图
+            document.getElementById("calendar").innerHTML = "";
+            init();
+            var width = ((24 * 60 / interval) + 10) * cellSize,
+                height = 600;
+            var svg = d3.select("div#calendar");
+            var layer = 1;
+            var flag = new Array();
+            for (var j in csv_nest) {
+                var m = false;
+                for (var i in csv_nest[j].values) {
+                    var keyDate = csv_nest[j].values[i].keyDate;
+                    var sDate = selectS.getFullYear() + "-" + ((selectS.getMonth() + 1) < 10 ? "0" : "") + (selectS.getMonth() + 1) + "-" + (selectS.getDate() < 10 ? "0" : "") + selectS.getDate();
+                    var eDate = selectE.getFullYear() + "-" + ((selectE.getMonth() + 1) < 10 ? "0" : "") + (selectE.getMonth() + 1) + "-" + (selectE.getDate() < 10 ? "0" : "") + selectE.getDate();
+                    if (keyDate < sDate) break;
+                    else if (keyDate > eDate) break;
+                    else {
+                        m = true;
+                    }
+                }
+                if (m) layer++;
+                flag.push(m);
+            }
+            color.domain(d3.extent(csv_data, function(d) {
+                return d[selectMap];
+            }));
+            var rectSVG = svg.append("svg").attr("width", width).attr("height", layer * cellheight).attr("class", "MW");
+            var rectG = rectSVG.append('g').attr('class', 'rect -g').attr("transform", "translate(5,0)");
+            var h = 0;
+            for (var j in flag) {
+                if (flag[j]) {
+                    drawRect(csv_nest[j].values, h++, rectG);
+                }
+            }
+            var aN = new Array();
+            for (var i in num) {
+                aN.push(num[i][selectMap])
+            }
+            return "平均值：" + d3.mean(aN).toFixed(2) + "  最大值：" + d3.max(aN) + "  最小值：" + d3.min(aN);
+        }
+        //确定像素块Y坐标位置
+        function getY(d) {
+            return d * cellheight;
+        }
+        //获取所属组的时间点y-m-s
+        function readDate(d) {
+            return d.keyDate;
+        }
+        //绘制小方块像素点
+        function drawRect(data, c, rectG) {
+            var flag = false;
+            for (var i in data) {
+                if (data[i].date >= selectS && data[i].date <= selectE) {
+                    num.push(data[i]);
+                    flag = true;
+                }
+            }
+            if (flag) {
+                var ty = cellSize - 2;
+                var rect = rectG.append('g').selectAll(".minute").data(num).enter().append("rect").attr('id', function(d) {
+                        return 'rect-' + d.index
+                    }).attr("class", "minute").attr("width", cellSize).attr("height", cellheight).attr("x", function(d) {
+                        //一小时60分钟 5分钟间隔 划分为12个元素，每个元素占piexlSize像素
+                        return (d.date.getHours() * (60 / interval) + d.date.getMinutes() / interval) * cellSize;
+                    }).attr("y", getY(c)).style("fill", function(d) {
+                        return compute(color(d[selectMap]));
+                    }).style("stroke-width", strokeSize)
+                    //.on("mouseover",mouseover)
+                    .on("mousedown", mouseDown);
+                rect.append("title").text(function(d) {
+                    return d.keyDate + " " + d.date.getHours() + ":" + d.date.getMinutes() + "  发电功率为:" + d[selectMap];
+                });
+            }
+        }
+        var selectDate = new Array(2);
+
+        function mouseDown(d) {
+            if (drawflag == 0) {
+                firstIndex = d.index;
+                selectDate[0] = d.keyDate;
+            }
+            drawflag++;
+            if (drawflag == 2) {
+                //				d3.selectAll('rect').style("opacity", 0.5);
+                if (d.index <= firstIndex) {
+                    alert("选取时间点小于前一个,请重新选择");
+                    drawflag = 1;
+                } else {
+                    secondIndex = d.index;
+                    selectDate[1] = d.keyDate;
+                    //选中的rect改变透明度
+                    var rect = d3.selectAll('.minute').style("stroke", '');
+                    for (var i = firstIndex; i <= secondIndex; i++) {
+                        $("#rect-" + i).css("stroke", 'black');
+                        $("#rect-" + i).css("stroke-right", '');
+                    }
+                    var j = d.index;
+                    //加载显示原始数据
+                    $.ajax({
+                        url: '/line_raw',
+                        type: 'GET',
+                        data: {
+                            date: selectDate[0] + "," + selectDate[1]
+                        },
+                        success: function(arg) {
+                            var data_obj = jQuery.parseJSON(arg[0]);
+                            var dim = arg[1];
+                            //console.log(data_obj);
+                            index = 0;
+                            for (var i in data_obj) {
+                                data_obj[i].index = index++;
+                                data_obj[i].keyDate = data_obj[i].date;
+                                data_obj[i].date = parseDate.parse(data_obj[i].date);
+                            }
+                            csv_range = [], line_obj = [], line_brush_selection = [];
+                            var raw_data = [];
+                            for (var i in data_obj) {
+                                raw_data.push(data_obj[i]);
+                            }
+                            //console.log(raw_data);
+                            timeseries('timeseries_0_1', 1, raw_data, selectDate, 0, true, false);
+                            timeseries('timeseries_0_2', 2, raw_data, selectDate, 0, true, false);
+                        },
+                        error: function() {
+                            console.log('失败');
+                        }
+                    });
+                    // 寻找相同工况的稳定段， 统计显示
+                    <!--function setIframe(){-->
+                    <!--}-->
+                    //                        load_coordinate();
+                    drawflag = 0;
+                }
+                console.log(brush_obj);
+            }
+        }
+
+        function load_coordinate() {
+            $.ajax({
+                url: '/coordinate_stat',
+                type: 'GET',
+                data: {
+                    date: selectDate[0] + "," + selectDate[1]
+                },
+                success: function(arg) {
+                    var mwData = arg[0];
+                    var allDate = arg[1];
+                    d3.select("#cod_detail").text("截取时间范围为：" + allDate[0] + "到" + allDate[1] + "   截取稳定工况的：MW范围[" + mwData[0] + "," + mwData[1] + "],标准差阈值为：" + mwData[2] + "");
+                    //create_div_layoutChange();
+                    document.getElementById("iframe").setAttribute('src', 'http://127.0.0.1:5000/coordinate.html');
+                    csv_range = [];
+                },
+                error: function() {
+                    console.log('失败');
+                }
+            });
+        }
+
+        /****detail模块开始****/
+
+        function data_select() {
+            // alert(222);
+            // var select_value = d.options[d.options.selectedIndex].value;
+        }
+
+        function show_layout() {
+            //alert(111);
+            var data_type = document.getElementById("data_select");
+            var layout_type = document.getElementById("layout_select");
+            var data_value = data_type.options[data_type.options.selectedIndex].value;
+            var layout_value = layout_type.options[layout_type.options.selectedIndex].value;
+            if (data_value == "")
+                alert("请先选择数据类型");
+            else {
+                switch (data_value) {
+                    case "1":
+                        switch (layout_value) {
+                            case "1":
+                                draw_detail_coordinate(cord_f, cord_s);
+                                break;
+                            case "2":
+                                draw_detail_scatter(cord_f, cord_s);
+                                break;
+                            default:
+                                alert("请选择布局");
+                        }
+                        break;
+                    case "2":
+                        switch (layout_value) {
+                            case "1":
+                                draw_auto_coordinate(cord_f, cord_s);
+                                break;
+                            case "2":
+                                draw_auto_scatter(cord_f, cord_s);
+                                break;
+                            default:
+                                alert("请选择布局");
+                        }
+
+                        break;
+                }
+            }
+        }
+        /****detail模块结束****/
+        /***细节平行坐标显示模块--开始****/
+        function draw_detail_coordinate(f, s) {
+            $.ajax({
+                url: '/coordinate_detail',
+                type: 'GET',
+                data: {
+                    date: f + "," + s
+                },
+                success: function(arg) {
+                    var mwData = arg;
+                    d3.select("#cod_detail").text("选取工况详情：date范围" + f + "到" + s + "MW范围[" + mwData[0] + "," + mwData[1] + "],标准差阈值为：" + mwData[2] + "");
+                    //                create_div_layoutChange(f, s);
+                    document.getElementById("iframe").setAttribute('src', 'http://127.0.0.1:5000/detail_coordinate.html');
+                    csv_range = [];
+                },
+                error: function() {
+                    console.log('失败');
+                }
+            });
+        }
+        /***细节平行坐标显示模块--结束****/
+        /***细节散点矩阵显示模块--开始****/
+        function draw_detail_scatter(f, s) {
+            $.ajax({
+                url: '/coordinate_detail',
+                type: 'GET',
+                data: {
+                    date: f + "," + s
+                },
+                success: function(arg) {
+                    var mwData = arg;
+                    d3.select("#cod_detail").text("选取工况详情：date范围" + f + "到" + s + "MW范围[" + mwData[0] + "," + mwData[1] + "],标准差阈值为：" + mwData[2] + "");
+                    //                create_div_layoutChange(f, s);
+                    document.getElementById("iframe").setAttribute('src', 'http://127.0.0.1:5000/detail_scatter.html');
+                    csv_range = [];
+                },
+                error: function() {
+                    console.log('失败');
+                }
+            });
+        }
+        /***细节散点矩阵显示模块--结束****/
+        /******细节数据模块结束********/
+
+        /*****统计数据模块开始***/
+        /***统计值平行坐标显示模块--开始****/
+        function draw_auto_coordinate(f, s) {
+            $.ajax({
+                url: '/coordinate_stat',
+                type: 'GET',
+                data: {
+                    date: f + "," + s
+                },
+                success: function(arg) {
+                    var mwData = arg[0];
+                    var allDate = arg[1];
+                    d3.select("#cod_detail").text("截取时间范围为：" + allDate[0] + "到" + allDate[1] + "   截取稳定工况的：date范围" + f + "到" + s + "MW范围[" + mwData[0] + "," + mwData[1] + "],标准差阈值为：" + mwData[2] + "");
+                    //                create_div_layoutChange(f, s);
+                    document.getElementById("iframe").setAttribute('src', 'http://127.0.0.1:5000/coordinate.html');
+                    csv_range = [];
+                },
+                error: function() {
+                    console.log('失败');
+                }
+            });
+        }
+        /***统计值平行坐标显示模块--结束****/
+
+        /***统计值散点图显示模块--开始****/
+        function draw_auto_scatter(f, s) {
+            $.ajax({
+                url: '/coordinate_stat',
+                type: 'GET',
+                data: {
+                    date: f + "," + s
+                },
+                success: function(arg) {
+                    var mwData = arg[0];
+                    var allDate = arg[1];
+                    d3.select("#cod_detail").text("截取时间范围为：" + allDate[0] + "到" + allDate[1] + "   截取稳定工况的：date范围" + f + "到" + s + "MW范围[" + mwData[0] + "," + mwData[1] + "],标准差阈值为：" + mwData[2] + "");
+                    //                create_div_layoutChange(f, s);
+                    document.getElementById("iframe").setAttribute('src', 'http://127.0.0.1:5000/scatter.html');
+                    csv_range = [];
+                },
+                error: function() {
+                    console.log('失败');
+                }
+            });
+
+        }
+        /****统计值散点图模块结束****/
+        /*****统计模块数据结束****/
+        //        function show_layout(d) {
+        //            var select_value = d.options[d.options.selectedIndex].value;
+        //            //要加载的数据
+        //            //			var file_1min = ["angleABCDEF_march_1min.csv", "smoke_march_1min.csv"];
+        //            var file_1min = ["angleABCDEF_march_1min.csv", "smoke_march_1min.csv", "AGP20160301.csv", "onceminiwater_march_1min.csv", "secondminiwater_march_1min.csv", "superHeat20160301new.csv", "zk20160301.csv"];
+        //            //初始化显示div内容
+        //            var div_layout_show = document.getElementById('layout_show');
+        //            div_layout_show.innerHTML = "";
+        //            var newDate, m = 1;
+        //            switch (select_value) {
+        //                case "1":
+        //                    var newDate, m = 1;
+        //                    for (var i = 0; i < file_1min.length; i++) {
+        //                        var div_coordinate = document.createElement("div")
+        //                        div_coordinate.setAttribute("id", "timeseries_" + (i + 1));
+        //                        div_coordinate.setAttribute("style", "width:960px;height:220px;margin:20px 20px");
+        //                        div_layout_show.appendChild(div_coordinate);
+        //                        var file_name = file_1min[i];
+        //                        var file_dir = "data/";
+        //                        d3.csv((file_dir + file_name), typeEF, function(error, csv) {
+        //                            timeseries('timeseries_' + m, m, csv, selectDate, 1, true, false);
+        //                            m++;
+        //                        })
+        //                    }
+        //                    break;
+        //                case "2":
+        //                    var newDate, m = 2;
+        //                    for (var i = 0; i < file_1min.length; i++) {
+        //                        var div_coordinate = document.createElement("div")
+        //                        div_coordinate.setAttribute("id", "timeseries_" + (i + 1));
+        //                        div_coordinate.setAttribute("style", "width:960px;height:220px;margin:20px 20px");
+        //                        div_layout_show.appendChild(div_coordinate);
+        //                        var file_name = file_1min[i];
+        //                        var file_dir = "data/";
+        //                        d3.csv((file_dir + file_name), typeEF, function(error, csv) {
+        //                            timeseries('timeseries_' + m, m, csv, selectDate, 1, true, false);
+        //                            m++;
+        //                        })
+        //                    }
+        //                    break;
+        //                default:
+        //                    alert("请选择布局");
+        //            }
+        //        }
+        var select_property = function() {
+            var f = document.getElementById("file");
+            var p = document.getElementById("select_p");
+            var p = 0,
+                q = 1;
+            f.innerHTML = "";
+            f.options[0] = new Option("请选择文件", "");
+            for (var j in select_1_file) {
+                f.options[q++] = new Option(select_1_file[p][1], p + "," + select_1_file[p][0]);
+                p++;
+            }
+            f.onchange = function() {}
+        }
+
+        function createDemos(f, s) {
+            //日期控件
+            var date = $("<div id='date' />").appendTo($("#dateSlider")); //渲染日期组件
+            var dateTxt = $("<lable id='dateTxt' style='position:relative;top:30px;'/>&nbsp;&nbsp;&nbsp;").appendTo($("#dateSlider")); //渲染确定日期显示组件
+            var dataTxt = $("<lable id='dataTxt' style='position:relative;top:30px;left:10px'/>").appendTo($("#dateSlider")); //渲染确定日期显示组件
+            var dateSilderObj = date.dateRangeSlider({
+                arrows: false, //是否显示左右箭头
+                bounds: {
+                    min: new Date(f),
+                    max: new Date(s)
+                }, //最大 最少日期
+                defaultValues: {
+                    min: new Date(f),
+                    max: new Date(s)
+                } //默认选中区域
+
+                ,
+                scales: [{
+                    first: function(value) {
+                        return value;
+                    },
+                    end: function(value) {
+                        return value;
+                    },
+                    next: function(val) {
+                        var next = new Date(val);
+                        return new Date(next.setMonth(next.getMonth() + 1));
+                    },
+                    label: function(val) {
+                        return Months[val.getMonth()];
+                    },
+                    format: function(tickContainer, tickStart, tickEnd) {
+                        tickContainer.addClass("myCustomClass");
+                    }
+                }]
+            });
+            //重新赋值（整个时间轴）
+            dateSilderObj.dateRangeSlider("bounds", new Date(f), new Date(s));
+            //重新赋值（选中区域）
+            dateSilderObj.dateRangeSlider("values", new Date(f), new Date(s));
+            //拖动完毕后的事件
+            dateSilderObj.bind("valuesChanged", function(e, data) {
+                var val = data.values;
+                var stime = val.min.getFullYear() + "-" + (val.min.getMonth() + 1) + "-" + val.min.getDate() + " " + val.min.getHours() + ":" + val.min.getMinutes() + ":" + val.min.getSeconds();
+                var etime = val.max.getFullYear() + "-" + (val.max.getMonth() + 1) + "-" + val.max.getDate() + " " + val.max.getHours() + ":" + val.max.getMinutes() + ":" + val.max.getSeconds();
+                selectS = stime;
+                selectE = etime;
+                num = new Array();
+                data_auto(stime, etime);
+                dateTxt.text("起止时间：" + stime + " 至 " + etime);
+            });
+        }
+
+        function loadAll() {
+            document.getElementById("dateSlider").innerHTML = "";
+            document.getElementById("calendar").innerHTML = "";
+            $.ajax({
+                url: '/dateRange',
+                type: 'GET',
+                success: function(arg) {
+                    var date_obj = arg[0];
+                    var various_obj = arg[1];
+                    createDemos(date_obj[0], date_obj[1]);
+                    var select_obj = d3.select('#selectMap');
+                    select_obj.innerHTML = "";
+                    var options = select_obj.selectAll('option').data(various_obj);
+                    options.enter()
+                        .append("option")
+                        .attr("value", function(d) {
+                            return d;
+                        })
+                        .text(function(d) {
+                            return d;
+                        });
+                    init();
+                },
+                error: function() {
+                    console.log('失败');
+                }
+            });
+        };
+
+        function reload() {
+            init();
+            if (selectS != "" && selectE != "")
+                data_auto(selectS, selectE);
+            else
+                alert('选择时间窗');
+        }
+
+        function brush_clear() {
+            for (var i in brush_obj) {
+                for (var j in brush_obj[i][2]) {
+                    brush_obj[i][2] = [0, 0];
+                }
+            }
+            for (var i in line_obj) {
+                line_obj[i] = [0, 0];
+            }
+        }
+
+        function type(d, i) {
+            d.date = parseDate.parse(d.date);
+            //            console.log(d.date)
+            d.keyDate = d.date.getFullYear() + "-" + ((d.date.getMonth() + 1) < 10 ? "0" : "") + (d.date.getMonth() + 1) + "-" + (d.date.getDate() < 10 ? "0" : "") + d.date.getDate();
+            d.index = ++i;
+            d.MW = parseInt(+d.MW); //发电功率
+            d.MWD2 = parseInt(+d.MWD2); //负荷功率
+            d.MSP = parseInt(+d.MSP); //主蒸汽压力
+            d.MSPS = parseInt(+d.MSPS); //主蒸汽压力设定值
+            d.THRTEMP = parseInt(+d.THRTEMP); //主蒸汽温度
+            return d;
+        }
+
+        function typeEF(d, i) {
+            d.date = parseDate.parse(d.date);
+            return d;
+        }
+    </script>
+</body>
+
+</html>

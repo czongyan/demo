@@ -1,0 +1,37 @@
+.coordinate_svg {
+	font: 10px sans-serif;
+}
+
+.background path {
+	fill: none;
+	stroke: #ccc;
+	stroke-opacity: .5;
+	stroke-width: 1px;
+	shape-rendering: crispEdges;
+}
+
+.foreground path {
+	fill: none;
+	stroke: steelblue;
+	stroke-width: 1px;
+	stroke-opacity: .8;
+}
+
+.coordinate_brush .extent {
+	fill-opacity: .3;
+	stroke: #fff;
+	shape-rendering: crispEdges;
+}
+
+.coordinate_axis line,
+.coordinate_axis path {
+	fill: none;
+	stroke: #000;
+	shape-rendering: crispEdges;
+}
+
+.coordinate_axis text {
+	text-shadow: 0 1px 0 #fff;
+	cursor: move;
+	fill: black;
+}

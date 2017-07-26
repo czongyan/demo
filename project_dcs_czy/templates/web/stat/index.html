@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style type="text/css">
+    svg {
+        font: 10px sans-serif;
+    }
+    
+    .background path {
+        fill: none;
+        stroke: #ccc;
+        stroke-opacity: .4;
+        shape-rendering: crispEdges;
+    }
+    
+    .foreground path {
+        fill: none;
+        stroke: steelblue;
+        stroke-opacity: .7;
+    }
+    
+    .brush .extent {
+        fill-opacity: .3;
+        stroke: #fff;
+        shape-rendering: crispEdges;
+    }
+    
+    .axis line,
+    .axis path {
+        fill: none;
+        stroke: #000;
+        shape-rendering: crispEdges;
+    }
+    
+    .axis text {
+        text-shadow: 0 1px 0 #fff;
+        stroke-width: 1px;
+        stroke: #000;
+        cursor: move;
+    }
+</style>
+
+<!--显示多选框-->
+<style>
+    ul {
+        list-style-type: none;
+        height: 40px;
+    }
+    
+    li {
+        border: solid 1px;
+        width: 130px;
+        float: left;
+    }
+</style>
+
+<body>
+    <div align="center" vertical-align="middle">
+        <h2>监测数据平行坐标图</h2>
+        <div>
+            <ul id="myUl">
+            </ul>
+
+            <input type="button" id="changeP" name="changeP" onclick="changeProperty()" value="更改属性轴" /></div>
+
+
+        <div> 设置量程
+            <select id="changeE" onchange="changeExtend_obj(this)">
+				</select> 最小
+            <input type="text" name="minE" id="minE" value="" /> 最大
+            <input type="text" name="maxE" id="maxE" value="" />
+
+            <input type="button" name='sureChange' value="更改量程" onclick="changeExtend_val()"></div>
+        <div id="show_data"></div>
+    </div>
+    <script src="../static/jquery/jquery-3.1.1.min.js"></script>
+    <script src="../static/D3/d3.v4.min.js" type="text/javascript"></script>
+    <script type="text/javascript">
+        //声明全局变量
+        var dimensions, csv_data, select_property, select_val, changeExtend, select_type = 0;
+        //转换日期格式
+        var parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
+        var format = d3.timeParse("%Y-%m-%d %H:%M:%S");
+        var m = [30, 10, 10, 10],
+            w = 1200 - m[1] - m[3],
+            h = 600 - m[0] - m[2];
+                //var x = d3.scalePoint().range([0, w])
+                $.ajax({
+                    url: "/stat_parallel",
+                    type: 'GET',
+                    success: function(data) {
+                        console.log(data);
+                        //格式化数据格式
+//                        var obj = JSON.parse(data[0]);
+//                        property_name = [];
+//                        for (var i in data[1]) {
+//                            property_name.push(data[1][i]);
+//                        }
+//                        var json_length = 1;
+//                        for (var i in obj.startDate)
+//                            json_length++;
+//                        json_data = new Array();
+//                        json_data = obj;
+//                        init(property_name)
+//                        for (var i = 0; i < json_length; i++) {
+//                            json_data['startDate'] = parseDate(d.startDate);
+//                            json_data['endDate'] = parseDate(d.endDate);
+//                        };
+                        //                console.log(json_data)
+                        //                    json_data.push(arr);
+                    }
+        
+                });
+
+        d3.csv("../static/data/stat/mean20160301.csv", function(error, cars) {
+            console.log(cars)
+            //获取属性值
+            var property_name = d3.keys(cars[0]);
+            //动态化复选框
+            executerDiv = document.getElementById('myUl');  
+            executerDiv.innerHTML = "";   
+            var ul = document.createElement("ul");
+            var li = document.createElement("li");                  
+            li.appendChild(document.createTextNode("选择显示的属性轴"));       
+            ul.appendChild(li);    
+            for (var i = 0; i < property_name.length; i++) {        // 加入复选框
+                if (property_name[i] == 'startDate')
+                    continue;
+                else {
+                    var checkBox = document.createElement("input");       
+                    checkBox.setAttribute("type", "checkbox");       
+                    checkBox.setAttribute("id", i);       
+                    checkBox.setAttribute("name", "property");
+                    checkBox.setAttribute("value", property_name[i]);
+                    var li = document.createElement("li");       
+                    li.appendChild(checkBox);              
+                    li.appendChild(document.createTextNode(property_name[i]));       
+                    ul.appendChild(li);     
+                }
+            }
+            var checkBox = document.createElement("input");       
+            checkBox.setAttribute("type", "checkbox");       
+            checkBox.setAttribute("id", 'allChecked');       
+            checkBox.setAttribute("name", "allChecked");
+            checkBox.setAttribute("value", '全选/取消');
+            checkBox.onclick = DoCheck;
+            //            checkBox.addEventListener("onclick", "DoCheck()");
+            var li = document.createElement("li");       
+            li.appendChild(checkBox);              
+            li.appendChild(document.createTextNode('全选/取消'));       
+            ul.appendChild(li);  
+            executerDiv.appendChild(ul);
+
+            //动态显示可更改量程的属性
+            e_obj = document.getElementById("changeE");
+            e_obj.innerHTML = "";
+            e_obj.options[0] = new Option("请选择更改量程的属性", "");
+            var j = 1;
+            for (var i in property_name) {
+                if (j < property_name.length)
+                    e_obj.options[j] = new Option(property_name[j], property_name[j]);
+                j++;
+            }
+
+            //格式化数据格式
+            var index = 1;
+            cars.forEach(function(d) {
+                for (var j in property_name) {
+                    if (property_name[j] == "startDate") {
+                        d.startDate = parseDate(d.startDate.substring(0, d.startDate.length - 1));
+                        d.endDate = parseDate(d.endDate.substring(1, d.endDate.length));
+                    }
+                }
+            });
+            csv_data = cars;
+            draw(0);
+        });
+
+        function draw(flag) {
+            document.getElementById("show_data").innerHTML = "";
+            var x = d3.scaleBand().rangeRound([0, w]).padding(1),
+                y = {},
+                dragging = {};
+            var line = d3.line(),
+                axis = d3.axisLeft(),
+                background, foreground, extents;
+            var svg = d3.select("body").select("div#show_data").append("svg").attr("width", w + m[1] + m[3]).attr("height", h + m[0] + m[2]).append("g").attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+            //console.log(cars);
+            // Extract the list of dimensions and create a scale for each.
+            if (flag == 0) {
+                //flag为更改显示属性轴标记，0：不做更改原始显示，1更改以后的显示
+                x.domain(dimensions = d3.keys(csv_data[0]).filter(function(d) {
+                    if (d == "endDate") return false;
+                    else if (d == "startDate") return (y[d] = d3.scaleTime().domain(d3.extent(csv_data, function(p) {
+                        return +p[d];
+                    })).range([h, 0]));
+                    else {
+                        return (y[d] = d3.scaleLinear().domain(d3.extent(csv_data, function(p) {
+                            return +p[d];
+                        })).range([h, 0]));
+                    }
+                }));
+            } else if (flag == 1) {
+                x.domain(dimensions = d3.keys(csv_data[0]).filter(function(d) {
+                    if (d == "endDate") return false;
+                    else if (d == "startDate") return (y[d] = d3.scaleTime().domain(d3.extent(csv_data, function(p) {
+                        return +p[d];
+                    })).range([h, 0]));
+                    else {
+                        for (var i in select_property) {
+                            if (d == select_property[i])
+                                return (y[d] = d3.scaleLinear().domain(d3.extent(csv_data, function(p) {
+                                    return +p[d];
+                                })).range([h, 0]));
+                        }
+
+                    }
+                }));
+            } else if (flag == 2) {
+                x.domain(dimensions = d3.keys(csv_data[0]).filter(function(d) {
+                    if (d == "endDate") return false;
+                    else if (d == "startDate") return (y[d] = d3.scaleTime().domain(d3.extent(csv_data, function(p) {
+                        return +p[d];
+                    })).range([h, 0]));
+                    else {
+                        if (select_type == 0) {
+                            //原始属性轴进行更改量程
+                            if (d == select_val)
+                                return (y[d] = d3.scaleLinear().domain(d3.extent(changeExtend)).range([h, 0]));
+                            else
+                                return (y[d] = d3.scaleLinear().domain(d3.extent(csv_data, function(p) {
+                                    return +p[d];
+                                })).range([h, 0]));
+                        } else if (select_type == 1) {
+                            for (var i in select_property) {
+                                if (d == select_property[i]) {
+                                    if (d == select_val)
+                                        return (y[d] = d3.scaleLinear().domain(d3.extent(changeExtend)).range([h, 0]));
+                                    else
+                                        return (y[d] = d3.scaleLinear().domain(d3.extent(csv_data, function(p) {
+                                            return +p[d];
+                                        })).range([h, 0]));
+                                }
+                            }
+                        }
+
+                    }
+                }));
+            }
+            extents = dimensions.map(function(p) {
+                return [0, 0];
+            });
+            // Add grey background lines for context.
+            background = svg.append("g").attr("class", "background").selectAll("path").data(csv_data).enter().append("path").attr("d", path);
+            // Add blue foreground lines for focus.
+            foreground = svg.append("g").attr("class", "foreground").selectAll("path").data(csv_data).enter().append("path").attr("d", path);
+            // Add a group element for each dimension.
+            var g = svg.selectAll(".dimension").data(dimensions).enter().append("g").attr("class", "dimension").attr("transform", function(d) {
+                return "translate(" + x(d) + ")";
+            }).call(d3.drag().subject(function(d) {
+                return {
+                    x: x(d)
+                };
+            }).on("start", function(d) {
+                dragging[d] = this.__origin__ = x(d);
+                background.attr("visibility", "hidden");
+            }).on("drag", function(d) {
+                dragging[d] = Math.min(w, Math.max(0, this.__origin__ += d3.event.dx));
+                foreground.attr("d", path);
+                dimensions.sort(function(a, b) {
+                    return position(a) - position(b);
+                });
+                x.domain(dimensions);
+                g.attr("transform", function(d) {
+                    return "translate(" + position(d) + ")";
+                })
+            }).on("end", function(d) {
+                delete this.__origin__;
+                delete dragging[d];
+                transition(d3.select(this)).attr("transform", "translate(" + x(d) + ")");
+                transition(foreground).attr("d", path);
+                background.attr("d", path).transition().delay(500).duration(0).attr("visibility", null);
+            }));
+            // Add an axis and title.
+            g.append("g").attr("class", "axis").each(function(d) {
+                d3.select(this).call(axis.scale(y[d]));
+            }).append("text").attr("text-anchor", "middle").attr("y", -9).text(String);
+            // Add and store a brush for each axis.
+            g.append("g").attr("class", "brush").each(function(d) {
+                //var d_extend=y["HHA51"].domain();
+                d3.select(this).call(y[d].brush = d3.brushY().extent([
+                    [-8, 0],
+                    [8, h]
+                ]).on("start", brushstart).on("brush end", brush));
+            }).selectAll("rect").attr("x", -8).attr("width", 16);
+
+            function position(d) {
+                var v = dragging[d];
+                return v == null ? x(d) : v;
+            }
+
+            function transition(g) {
+                return g.transition().duration(500);
+            }
+            // Returns the path for a given data point.
+            function path(d) {
+                return line(dimensions.map(function(p) {
+                    return [position(p), y[p](d[p])];
+                }));
+            }
+            // When brushing, don’t trigger axis dragging.
+            function brushstart() {
+                d3.event.sourceEvent.stopPropagation();
+            }
+            // Handles a brush event, toggling the display of foreground lines.
+            function brush() {
+                for (var i = 0; i < dimensions.length; ++i) {
+                    //				console.log(d3.event.selection);
+                    if (d3.event.target == y[dimensions[i]].brush) {
+                        //					console.log(1);
+                        if (d3.event.selection == null) {
+                            extents[i] = [0, 0];
+                            console.log("刷子" + i + "空了！！！");
+                        } else {
+                            //						console.log(2);
+                            extents[i] = d3.event.selection.map(y[dimensions[i]].invert, y[dimensions[i]]);
+                        }
+                    }
+                    foreground.style("display", function(d) {
+                        //如果return true则返回null，否则返回none
+                        return dimensions.every(function(p, i) {
+                            //如果extents为0，表示没选中，则返回true
+                            //						console.log(extents[i][0]);
+                            if (extents[i][0] == 0 && extents[i][1] == 0) {
+                                return true;
+                            }
+                            //如果当前foreground的线段数据在extents范围内，则返回true
+                            else {
+                                if (extents[i][1] <= d[p] && d[p] <= extents[i][0]) {
+                                    console.log(d);
+                                }
+                                return extents[i][1] <= d[p] && d[p] <= extents[i][0];
+                            }
+                        }) ? null : "none";
+                    });
+                }
+            }
+
+            function brushend() {
+                foreground.style("display", function(d) {
+                    return dimensions.every(function(p, i) {
+                        if (extents[i][0] == 0 && extents[i][0] == 0) {
+                            return true;
+                        }
+                        return extents[i][1] <= d[p] && d[p] <= extents[i][0];
+                    }) ? null : "none";
+                });
+            }
+        }
+
+        function typeEF(d, i) {
+            //			console.log(d);
+            d.startDate = parseDate(d.startDate);
+            //			console.log(d);
+            return d;
+        }
+
+        function DoCheck() {
+            var ch = document.getElementsByName("property");
+            if (document.getElementsByName("allChecked")[0].checked == true) {
+                for (var i = 0; i < ch.length; i++) {
+                    ch[i].checked = true;
+                }
+            } else {
+                for (var i = 0; i < ch.length; i++) {
+                    ch[i].checked = false;
+                }
+            }
+        }
+
+        function changeProperty() {
+            select_type = 1; //更改了属性轴的选择
+            var obj = document.getElementsByName('property');
+            select_property = new Array();
+            for (var i = 0; i < obj.length; i++) {
+                if (obj[i].checked) select_property.push(obj[i].value); //如果选中，将value添加到变量s中 
+            }
+            //动态显示可更改量程的属性
+            e_obj = document.getElementById("changeE");
+            e_obj.innerHTML = "";
+            e_obj.options[0] = new Option("请选择更改量程的属性", "");
+            j = 1;
+            for (var i in select_property) {
+                e_obj.options[j] = new Option(select_property[i], select_property[i]);
+                j++;
+            }
+
+            draw(1);
+        }
+
+        function changeExtend_obj(d) {
+            select_val = d.options[d.options.selectedIndex].value;
+        }
+
+        function changeExtend_val() {
+            changeExtend = new Array();
+            var minE = document.getElementById("minE").value;
+            var maxE = document.getElementById("maxE").value;
+            if (minE == " " || maxE == " ")
+                alert("请确认输入了量程值！");
+            else {
+                changeExtend = [minE, maxE];
+                draw(2);
+            }
+        }
+    </script>
+</body>
